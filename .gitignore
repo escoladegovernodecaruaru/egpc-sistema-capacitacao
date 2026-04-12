@@ -7,7 +7,7 @@ __pycache__/
 venv/
 env/
 .env
-db.sqlite3  # MUITO IMPORTANTE: Nunca suba o banco local, pode ter dados reais!
+db.sqlite3
 media/
 staticfiles/
 
@@ -33,4 +33,4 @@ yarn-error.log*
 .DS_Store
 .vscode/
 .idea/
-contexto_projeto.txt # O arquivo que o script acabou de gerar
+contexto_projeto.txt
