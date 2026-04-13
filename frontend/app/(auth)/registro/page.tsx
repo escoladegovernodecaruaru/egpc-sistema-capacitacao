@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   User, Mail, Phone, Calendar, Briefcase,
   Lock, CheckCircle2, ArrowLeft, Loader2,
-  AlertTriangle, ShieldCheck, UserRound,
+  AlertTriangle, ShieldCheck, UserRound, KeyRound, RefreshCcw
 } from "lucide-react";
 import { fetchApi, type ApiError } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
@@ -20,44 +20,35 @@ import { cn } from "@/lib/utils";
 // ─────────────────────────────────────────────────────────────────────────────
 
 type TipoUsuario = "CIDADAO" | "SERVIDOR_ATIVO" | "TERCEIRIZADO" | "ESTAGIARIO";
-
-// Mapeamento dos steps numéricos para IDs semânticos
-//  1  → dados básicos
-//  1.5→ responsável legal (< 18 anos)
-//  2  → tipo de vínculo
-//  3  → dados funcionais / dinâmicos
-//  4  → senha
-type StepId = 1 | 1.5 | 2 | 3 | 4;
+type StepId = 1 | 2 | 3 | 3.5 | 4 | 5 | 6;
 
 interface FormState {
-  cpf:             string;
-  nome_completo:   string;
-  email:           string;
-  telefone:        string;
-  data_nascimento: string;
-  // Menor de idade
+  cpf:              string;
+  email:            string;
+  otp:              string;
+  nome_completo:    string;
+  telefone:         string;
+  data_nascimento:  string;
   responsavel_nome: string;
   responsavel_cpf:  string;
-  // Tipo de vínculo
-  tipo_usuario: TipoUsuario;
-  // Dados funcionais dinâmicos
-  matricula:   string;   // Apenas SERVIDOR_ATIVO
-  empresa:     string;   // TERCEIRIZADO e ESTAGIARIO
-  secretaria:  string;
-  email_chefe: string;
-  // Senha
-  password:        string;
-  passwordConfirm: string;
+  tipo_usuario:     TipoUsuario;
+  matricula:        string; 
+  empresa:          string; 
+  secretaria:       string;
+  email_chefe:      string;
+  password:         string;
+  passwordConfirm:  string;
 }
 
 const INITIAL_FORM: FormState = {
-  cpf: "", nome_completo: "", email: "", telefone: "",
-  data_nascimento: "",
-  responsavel_nome: "", responsavel_cpf: "",
-  tipo_usuario: "CIDADAO",
-  matricula: "", empresa: "", secretaria: "", email_chefe: "",
+  cpf: "", email: "", otp: "", nome_completo: "", telefone: "",
+  data_nascimento: "", responsavel_nome: "", responsavel_cpf: "",
+  tipo_usuario: "CIDADAO", matricula: "", empresa: "", secretaria: "", email_chefe: "",
   password: "", passwordConfirm: "",
 };
+
+// 1min, 5min, 30min, 60min
+const DELAYS = [60, 300, 1800, 3600];
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Componentes internos reutilizáveis
@@ -72,24 +63,15 @@ function FieldGroup({ label, children }: { label: string; children: React.ReactN
   );
 }
 
-function IconInput({
-  icon: Icon,
-  errorMsg,
-  ...props
-}: React.InputHTMLAttributes<HTMLInputElement> & {
-  icon?: React.ElementType;
-  errorMsg?: string;
-}) {
+function IconInput({ icon: Icon, errorMsg, ...props }: any) {
   return (
     <>
       {Icon && <Icon className="input-icon" />}
       <input
         {...props}
         className={cn(
-          "input-dark",
-          Icon ? "input-dark-icon" : "",
-          errorMsg ? "input-dark-error" : "",
-          props.className
+          "input-dark", Icon ? "input-dark-icon" : "",
+          errorMsg ? "input-dark-error" : "", props.className
         )}
       />
       <AnimatePresence>
@@ -111,27 +93,21 @@ function StepProgress({ current, total }: { current: number; total: number }) {
   return (
     <div className="flex items-center gap-1.5 mb-8">
       {Array.from({ length: total }).map((_, i) => (
-        <div
-          key={i}
-          className={cn(
-            "h-[3px] flex-1 rounded-full transition-all duration-500",
-            i + 1 <= current ? "bg-primary" : "bg-white/[0.06]"
-          )}
-        />
+        <div key={i} className={cn("h-[3px] flex-1 rounded-full transition-all duration-500", i + 1 <= current ? "bg-primary" : "bg-white/[0.06]")} />
       ))}
     </div>
   );
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Página principal
-// ─────────────────────────────────────────────────────────────────────────────
 
 const SLIDE = {
   hidden:  { opacity: 0, x: 24, scale: 0.97 },
   visible: { opacity: 1, x: 0, scale: 1, transition: { type: "spring" as const, stiffness: 320, damping: 30 } },
   exit:    { opacity: 0, x: -24, scale: 0.97, transition: { duration: 0.15 } },
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Página principal
+// ─────────────────────────────────────────────────────────────────────────────
 
 export default function RegistroPage() {
   const router = useRouter();
@@ -140,596 +116,570 @@ export default function RegistroPage() {
   const [cpfError, setCpfError] = useState("");
   const [cpfRespError, setCpfRespError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(true);
+
+  // ── ESTADOS DE SEGURANÇA (OTP) ──
+  const [otpAttempts, setOtpAttempts] = useState(0);
+  const [resendCount, setResendCount] = useState(0);
+  const [countdown, setCountdown] = useState(0);
+  const [lastSentEmail, setLastSentEmail] = useState("");
 
   const cpfLimpo     = form.cpf.replace(/\D/g, "");
   const cpfRespLimpo = form.responsavel_cpf.replace(/\D/g, "");
   const idade        = form.data_nascimento ? calcularIdade(form.data_nascimento) : null;
   const isMenor      = idade !== null && idade < 18;
 
-  // Mapa de step numérico → rótulo de exibição
-  const stepsVisiveis: StepId[] = isMenor
-    ? [1, 1.5, 2, 3, 4]
-    : [1, 2, 3, 4];
-
+  const stepsVisiveis: StepId[] = isMenor ? [1, 2, 3, 3.5, 4, 5, 6] : [1, 2, 3, 4, 5, 6];
   const stepIndex = stepsVisiveis.indexOf(step);
   const totalSteps = stepsVisiveis.length;
 
-  // ── Validação assíncrona do CPF principal ─────────────────────────────────
+  const set = (field: keyof FormState, value: string) =>
+    setForm((prev) => ({ ...prev, [field]: value }));
+
+  // ── LIMPEZA TOTAL (Resolve Problema de Sessão Presa/F5) ──
+  const handleResetRegistration = async () => {
+    localStorage.removeItem("egpc_otp_cooldown");
+    localStorage.removeItem("egpc_partial_reg");
+    await supabase.auth.signOut();
+    setForm(INITIAL_FORM);
+    setStep(1);
+    setCountdown(0);
+    setLastSentEmail("");
+    toast.success("Progresso limpo. Você pode iniciar um novo cadastro.");
+  };
+
+  // ── PERSISTÊNCIA DO FORMULÁRIO NO F5 ──
+  useEffect(() => {
+    if (!isInitializing) {
+      localStorage.setItem("egpc_partial_reg", JSON.stringify({ form, step }));
+    }
+  }, [form, step, isInitializing]);
+
+  // ── INICIALIZAÇÃO E VALIDAÇÃO REAL DA SESSÃO ──
+  useEffect(() => {
+    const initialize = async () => {
+      const savedReg = localStorage.getItem("egpc_partial_reg");
+      if (savedReg) {
+        try {
+          const { form: savedForm, step: savedStep } = JSON.parse(savedReg);
+          setForm(savedForm);
+          setStep(savedStep);
+        } catch(e) {}
+      }
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        const { data: { user }, error } = await supabase.auth.getUser();
+        if (error || !user) {
+          await handleResetRegistration();
+        } else if (step < 3) {
+          set("email", user.email || "");
+          setStep(3);
+        }
+      }
+
+      const storedCooldown = localStorage.getItem("egpc_otp_cooldown");
+      if (storedCooldown) {
+        try {
+          const { nextTime, count, email } = JSON.parse(storedCooldown);
+          const diff = Math.floor((nextTime - Date.now()) / 1000);
+          if (diff > 0) {
+            setCountdown(diff);
+            setResendCount(count);
+            setLastSentEmail(email);
+          }
+        } catch(e) {}
+      }
+      setIsInitializing(false);
+    };
+    initialize();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (countdown > 0) {
+      const timer = setTimeout(() => setCountdown(countdown - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [countdown]);
+
+  // ── RECUPERAÇÃO DE SESSÃO (CROSS-TAB) ──
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "SIGNED_IN" && step === 2) {
+        toast.success("E-mail verificado automaticamente pelo link!");
+        setStep(3); 
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [step]);
+
+  // ── VALIDAÇÕES ──
   const verificarCPFNoBanco = useCallback(async (cpf: string) => {
     try {
-      await fetchApi("/users/auth/pre-validate/", {
-        method: "POST",
-        requireAuth: false,
-        body: JSON.stringify({ cpf }),
-      });
-      // 200 = disponível
+      await fetchApi("/users/auth/pre-validate/", { method: "POST", requireAuth: false, body: JSON.stringify({ cpf }) });
       setCpfError("");
-    } catch (err: unknown) {
-      const apiErr = err as ApiError;
-      if (apiErr.status === 400 && apiErr.errors?.cpf) {
-        setCpfError("Este CPF já está cadastrado no sistema.");
-      } else {
-        setCpfError("");
-      }
+    } catch (err: any) {
+      if (err.status === 400 && err.errors?.cpf) setCpfError("Este CPF já está cadastrado.");
+      else setCpfError("");
     }
   }, []);
 
   useEffect(() => {
     if (cpfLimpo.length === 11) {
-      if (!validarCPF(cpfLimpo)) {
-        setCpfError("CPF matematicamente inválido (dígito verificador incorreto).");
-        return;
-      }
-      verificarCPFNoBanco(cpfLimpo);
-    } else {
-      setCpfError("");
-    }
+      if (!validarCPF(cpfLimpo)) setCpfError("CPF matematicamente inválido.");
+      else verificarCPFNoBanco(cpfLimpo);
+    } else setCpfError("");
   }, [cpfLimpo, verificarCPFNoBanco]);
 
-  // Validação CPF do responsável
   useEffect(() => {
     if (cpfRespLimpo.length === 11) {
-      setCpfRespError(
-        validarCPF(cpfRespLimpo) ? "" : "CPF do responsável é matematicamente inválido."
-      );
+      if (!validarCPF(cpfRespLimpo)) {
+        setCpfRespError("CPF do responsável é inválido.");
+      } else if (cpfRespLimpo === cpfLimpo) {
+        setCpfRespError("O CPF do responsável não pode ser igual ao seu.");
+      } else {
+        setCpfRespError("");
+      }
     } else {
       setCpfRespError("");
     }
-  }, [cpfRespLimpo]);
+  }, [cpfRespLimpo, cpfLimpo]);
 
-  // ── Manipulação do formulário ─────────────────────────────────────────────
-  const set = (field: keyof FormState, value: string) =>
-    setForm((prev) => ({ ...prev, [field]: value }));
+  // ── LÓGICA OTP ──
+  const handleRequestOTP = async (isResend = false) => {
+    if (!validarCPF(cpfLimpo) || cpfError) return toast.error("Corrija o CPF antes de continuar.");
+    if (!form.email) return toast.error("Preencha o e-mail.");
 
-  const handleNext = () => {
-    if (step === 1) {
-      if (!validarCPF(cpfLimpo) || cpfError) {
-        toast.error("Corrija o CPF antes de continuar.");
-        return;
-      }
-      if (!form.nome_completo || !form.email || !form.telefone || !form.data_nascimento) {
-        toast.error("Preencha todos os campos obrigatórios.");
-        return;
-      }
-      setStep(isMenor ? 1.5 : 2);
-      return;
-    }
-    if (step === 1.5) {
-      if (!form.responsavel_nome || cpfRespLimpo.length !== 11 || cpfRespError) {
-        toast.error("Informe corretamente os dados do responsável legal.");
-        return;
-      }
+    if (!isResend && form.email === lastSentEmail) {
       setStep(2);
       return;
     }
-    if (step === 2) {
-      setStep(form.tipo_usuario === "CIDADAO" ? 4 : 3);
+
+    if (isResend && countdown > 0) return;
+
+    setIsLoading(true);
+    try {
+      if (form.email !== lastSentEmail) {
+        await fetchApi("/users/auth/pre-validate/", {
+          method: "POST", requireAuth: false, body: JSON.stringify({ cpf: cpfLimpo, email: form.email }),
+        });
+      }
+
+      const redirectUrl = typeof window !== 'undefined' ? `${window.location.origin}/registro` : undefined;
+      const { error } = await supabase.auth.signInWithOtp({ 
+        email: form.email,
+        options: { emailRedirectTo: redirectUrl }
+      });
+      
+      if (error) throw error;
+
+      toast.success(isResend ? "Novo código enviado!" : "Código enviado! Verifique seu e-mail.");
+      setStep(2);
+      setLastSentEmail(form.email);
+
+      const currentCount = isResend ? resendCount : 0;
+      const delayIndex = Math.min(currentCount, DELAYS.length - 1);
+      const delay = DELAYS[delayIndex];
+
+      setCountdown(delay);
+      setResendCount(currentCount + 1);
+      setOtpAttempts(0);
+      set("otp", "");
+
+      if (typeof window !== "undefined") {
+        localStorage.setItem("egpc_otp_cooldown", JSON.stringify({
+          nextTime: Date.now() + delay * 1000,
+          count: currentCount + 1,
+          email: form.email
+        }));
+      }
+    } catch (err: any) {
+      toast.error(err.errors?.email?.[0] || err.message || "Erro ao solicitar código.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleVerifyOTP = async () => {
+    if (form.otp.length !== 6) return;
+    
+    if (otpAttempts >= 3) {
+      toast.error("Muitas tentativas falhas. Por segurança, solicite um novo código.");
       return;
     }
-    if (step === 3) {
-      if (form.tipo_usuario === "SERVIDOR_ATIVO" && !form.matricula.trim()) {
-        toast.error("A matrícula é obrigatória para Servidores Ativos.");
-        return;
+
+    setIsLoading(true);
+    const { error } = await supabase.auth.verifyOtp({ email: form.email, token: form.otp, type: "email" });
+    setIsLoading(false);
+
+    if (error) {
+      const newAttempts = otpAttempts + 1;
+      setOtpAttempts(newAttempts);
+      
+      if (newAttempts >= 3) {
+        toast.error("Você errou o código 3 vezes. Aguarde e solicite um novo envio.");
+      } else {
+        toast.error(`Código inválido. Você tem mais ${3 - newAttempts} tentativa(s).`);
       }
-      setStep(4);
-      return;
+    } else {
+      toast.success("E-mail verificado com sucesso!");
+      setStep(3);
+    }
+  };
+
+  // ── CONTROLE DE PASSOS ──
+  const handleNext = () => {
+    if (step === 3) {
+      if (!form.nome_completo || !form.telefone || !form.data_nascimento) return toast.error("Preencha todos os campos obrigatórios.");
+      setStep(isMenor ? 3.5 : 4); return;
+    }
+    if (step === 3.5) {
+      if (!form.responsavel_nome || cpfRespLimpo.length !== 11 || cpfRespError) {
+        return toast.error("Informe corretamente os dados do responsável.");
+      }
+      if (cpfRespLimpo === cpfLimpo) {
+        return toast.error("Você não pode ser o seu próprio responsável legal.");
+      }
+      if (form.tipo_usuario === "SERVIDOR_ATIVO" || form.tipo_usuario === "TERCEIRIZADO") {
+        set("tipo_usuario", "CIDADAO");
+      }
+      setStep(4); return;
+    }
+    if (step === 4) return setStep(form.tipo_usuario === "CIDADAO" ? 6 : 5);
+    if (step === 5) {
+      if (form.tipo_usuario === "SERVIDOR_ATIVO" && !form.matricula.trim()) return toast.error("A matrícula é obrigatória para Servidores.");
+      setStep(6); return;
     }
   };
 
   const handleBack = () => {
-    if (step === 4)   { setStep(form.tipo_usuario === "CIDADAO" ? 2 : 3); return; }
-    if (step === 3)   { setStep(2);          return; }
-    if (step === 2)   { setStep(isMenor ? 1.5 : 1); return; }
-    if (step === 1.5) { setStep(1);          return; }
+    if (step === 6)   return setStep(form.tipo_usuario === "CIDADAO" ? 4 : 5);
+    if (step === 5)   return setStep(4);
+    if (step === 4)   return setStep(isMenor ? 3.5 : 3);
+    if (step === 3.5) return setStep(3);
+    if (step === 3)   return setStep(2);
+    if (step === 2)   return setStep(1);
   };
 
-  // ── Finalização: Supabase → Django (com rollback lógico) ─────────────────
+  // ── FINALIZAÇÃO ──
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (form.password !== form.passwordConfirm) {
-      toast.error("As senhas não coincidem.");
-      return;
-    }
-    if (form.password.length < 6) {
-      toast.error("A senha deve ter pelo menos 6 caracteres.");
-      return;
-    }
+    if (form.password !== form.passwordConfirm) return toast.error("As senhas não coincidem.");
+    if (form.password.length < 6) return toast.error("A senha deve ter pelo menos 6 caracteres.");
+    
     setIsLoading(true);
-
-    // 1️⃣ Pré-validação no Django antes de criar qualquer conta
-    try {
-      await fetchApi("/users/auth/pre-validate/", {
-        method: "POST",
-        requireAuth: false,
-        body: JSON.stringify({ cpf: cpfLimpo, email: form.email }),
-      });
-    } catch (err: unknown) {
-      const apiErr = err as ApiError;
-      const erros  = apiErr.errors || {};
-      const msg    = erros.cpf?.[0] || erros.email?.[0] || apiErr.message;
-      toast.error(`Dados já em uso: ${msg}`);
-      setIsLoading(false);
-      return;
+    const { error: pwdError } = await supabase.auth.updateUser({ password: form.password });
+    
+    if (pwdError) {
+      toast.error("Erro ao salvar senha no provedor de segurança.");
+      setIsLoading(false); return;
     }
 
-    // 2️⃣ SignUp no Supabase
-    console.log("[REGISTRO] Iniciando signUp no Supabase:", form.email);
-    const { data: authData, error: authError } = await supabase.auth.signUp({
-      email:    form.email,
-      password: form.password,
-    });
-
-    if (authError) {
-      console.error("[REGISTRO] Erro no Supabase signUp:", authError);
-      toast.error(`Falha no provedor de autenticação: ${authError.message}`);
-      setIsLoading(false);
-      return;
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      toast.error("Sessão de segurança perdida. Faça login novamente.");
+      setIsLoading(false); return;
     }
 
-    console.log("[REGISTRO] Resposta Supabase — user:", authData.user?.id, "| session:", authData.session ? "presente" : "NULA (e-mail de confirmação ativo)");
-
-    // ⚠️ DIAGNÓSTICO: session = null significa que o Supabase exige confirmação de e-mail.
-    // Nesse caso, o access_token ainda está disponível no objeto user.
-    // Tentamos extraí-lo diretamente da sessão OU do campo identities como fallback.
-    const accessToken = authData.session?.access_token;
-
-    if (!accessToken) {
-      // E-mail de confirmação está ATIVADO no painel Supabase.
-      // O perfil Django não pode ser criado sem o JWT válido.
-      // Orientação: no painel Supabase → Authentication → Settings → desative "Enable email confirmations"
-      console.warn("[REGISTRO] access_token indisponível. E-mail de confirmação provavelmente ativo.");
-      toast.warning(
-        "Verifique sua caixa de e-mail: enviamos um link de confirmação. Após confirmar, faça login normalmente.",
-        { duration: 8000 }
-      );
-      toast.info(
-        "Se for ambiente de desenvolvimento, desative 'Email Confirmations' no painel Supabase → Auth → Settings.",
-        { duration: 10000 }
-      );
-      setIsLoading(false);
-      return;
-    }
-
-    // 3️⃣ Criar o perfil no Django usando o token recém-obtido
-    const dados_servidor: Record<string, unknown> = {
-      secretaria:    form.secretaria || null,
-      email_chefe:   form.email_chefe || null,
-      dt_nascimento: form.data_nascimento,
-    };
-    if (form.tipo_usuario === "SERVIDOR_ATIVO") {
-      dados_servidor["matricula"] = form.matricula;
-    } else if (form.tipo_usuario !== "CIDADAO") {
-      dados_servidor["empresa"] = form.empresa;
-    }
-    if (isMenor) {
-      dados_servidor["responsavel"] = { nome: form.responsavel_nome, cpf: cpfRespLimpo };
-    }
+    const dados_servidor: any = { secretaria: form.secretaria || null, email_chefe: form.email_chefe || null, dt_nascimento: form.data_nascimento };
+    if (form.tipo_usuario === "SERVIDOR_ATIVO") dados_servidor.matricula = form.matricula;
+    else if (form.tipo_usuario !== "CIDADAO") dados_servidor.empresa = form.empresa;
 
     const corpoRegistro = {
-      cpf:           cpfLimpo,
-      nome_completo: form.nome_completo,
-      email:         form.email,
-      telefone:      form.telefone.replace(/\D/g, ""),
-      tipo_usuario:  form.tipo_usuario,
-      dados_servidor,
+      cpf: cpfLimpo, nome_completo: form.nome_completo, email: form.email,
+      telefone: form.telefone.replace(/\D/g, ""), tipo_usuario: form.tipo_usuario, dados_servidor,
     };
 
-    console.log("[REGISTRO] Enviando para o Django:", corpoRegistro);
-
     try {
-      // Passamos o accessToken recém-obtido diretamente no header,
-      // evitando depender do getSession() (que pode ainda não ter propagado).
-      const resultado = await fetchApi("/users/auth/register/", {
-        method: "POST",
-        requireAuth: false, // Gerenciamos o header manualmente abaixo
-        headers: { Authorization: `Bearer ${accessToken}` },
-        body: JSON.stringify(corpoRegistro),
+      await fetchApi("/users/auth/register/", {
+        method: "POST", requireAuth: false, headers: { Authorization: `Bearer ${session.access_token}` }, body: JSON.stringify(corpoRegistro),
       });
-
-      console.log("[REGISTRO] Django respondeu com sucesso:", resultado);
       toast.success("Cadastro realizado com sucesso! Bem-vindo(a) ao EGPC.");
+      // Limpa os caches locais pois o cadastro finalizou com sucesso
+      localStorage.removeItem("egpc_partial_reg");
+      localStorage.removeItem("egpc_otp_cooldown");
       router.push("/dashboard");
-
-    } catch (err: unknown) {
-      const apiErr = err as ApiError;
-      console.error("[REGISTRO] Django rejeito o perfil:", apiErr);
-
-      // 🔄 ROLLBACK LÓGICO: tenta remover a conta do Supabase
-      console.warn("[REGISTRO] Iniciando rollback do Supabase...");
+    } catch (err: any) {
       await supabase.auth.signOut();
-
-      toast.error(
-        `Perfil não criado: ${apiErr.message}`,
-        { description: `Status HTTP ${apiErr.status}. Verifique o console para detalhes.`, duration: 8000 }
-      );
+      toast.error(`Perfil não criado: ${err.message}`);
       setIsLoading(false);
     }
   };
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // Render helpers
-  // ─────────────────────────────────────────────────────────────────────────
+  const formatTempo = (segundos: number) => {
+    const m = Math.floor(segundos / 60).toString().padStart(2, '0');
+    const s = (segundos % 60).toString().padStart(2, '0');
+    return `${m}:${s}`;
+  };
 
-  const tiposVinculo = [
-    { id: "CIDADAO"      as TipoUsuario, label: "Cidadão",        desc: "Público geral, acesso a cursos abertos" },
-    { id: "SERVIDOR_ATIVO" as TipoUsuario, label: "Servidor Ativo", desc: "Servidor municipal ou estadual ativo" },
-    { id: "TERCEIRIZADO" as TipoUsuario, label: "Terceirizado",    desc: "Colaborador via empresa ou contrato" },
-    { id: "ESTAGIARIO"   as TipoUsuario, label: "Estagiário",      desc: "Estágio vinculado a órgão público" },
+  const todosVinculos = [
+    { id: "CIDADAO"        as TipoUsuario, label: "Cidadão",        desc: "Público geral sem vínculo em orgão da Prefeitura de Caruaru, acesso a cursos abertos" },
+    { id: "SERVIDOR_ATIVO" as TipoUsuario, label: "Servidor Ativo", desc: "Servidor municipal de Caruaru com matrícula ativa" },
+    { id: "TERCEIRIZADO"   as TipoUsuario, label: "Terceirizado",   desc: "Colaborador via empresa ou contrato em órgão da Prefeitura de Caruaru" },
+    { id: "ESTAGIARIO"     as TipoUsuario, label: "Estagiário",     desc: "Estágio vinculado a órgão da Prefeitura de Caruaru" },
   ];
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // JSX
-  // ─────────────────────────────────────────────────────────────────────────
+  const tiposVinculo = isMenor
+    ? todosVinculos.filter(t => t.id === "CIDADAO" || t.id === "ESTAGIARIO")
+    : todosVinculos;
+
+  if (isInitializing) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#020617]">
+        <Loader2 className="w-10 h-10 animate-spin text-primary" />
+      </div>
+    );
+  }
+
   return (
     <main className="min-h-screen flex items-center justify-center p-4 py-12 relative overflow-hidden">
-
-      {/* Fundo com luzes atmosféricas */}
       <div className="fixed inset-0 -z-10 pointer-events-none">
         <div className="absolute -top-1/3 -right-1/4 w-1/2 h-1/2 rounded-full bg-success/10  blur-[180px]" />
         <div className="absolute -bottom-1/3 -left-1/4 w-1/2 h-1/2 rounded-full bg-primary/20 blur-[180px]" />
       </div>
 
       <div className="glass-card w-full max-w-lg p-8">
-
-        {/* Cabeçalho */}
         <header className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-3">
             {step > 1 && (
               <button
                 onClick={handleBack}
                 className="w-9 h-9 rounded-xl bg-white/[0.05] hover:bg-white/10 border border-white/[0.06]
-                           flex items-center justify-center text-zinc-400 hover:text-zinc-100
-                           transition-all active:scale-95"
-                title="Voltar"
+                           flex items-center justify-center text-slate-400 hover:text-slate-100 transition-all active:scale-95"
               >
                 <ArrowLeft className="w-4 h-4" />
               </button>
             )}
             <div>
-              <h1 className="text-xl font-bold text-zinc-100 leading-tight">Criar Conta</h1>
-              <p className="text-[12px] text-zinc-500">
-                Etapa {stepIndex + 1} de {totalSteps}
-              </p>
+              <h1 className="text-xl font-bold text-slate-100 leading-tight">Criar Conta</h1>
+              <p className="text-[12px] text-slate-500">Etapa {stepIndex + 1} de {totalSteps}</p>
             </div>
           </div>
-          <div className="w-10 h-10 rounded-xl bg-primary/20 text-primary-light
-                          flex items-center justify-center border border-primary/20">
-            <ShieldCheck className="w-5 h-5" />
+          <div className="flex items-center gap-2">
+            {step > 1 && (
+              <button onClick={handleResetRegistration} title="Recomeçar do zero" className="w-10 h-10 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 flex items-center justify-center text-slate-400 transition-all">
+                <RefreshCcw className="w-4 h-4" />
+              </button>
+            )}
+            <div className="w-10 h-10 rounded-xl bg-primary/20 text-primary-light flex items-center justify-center border border-primary/20">
+              <ShieldCheck className="w-5 h-5" />
+            </div>
           </div>
         </header>
 
         <StepProgress current={stepIndex + 1} total={totalSteps} />
 
-        {/* Conteúdo animado dos slides */}
         <div className="relative">
           <AnimatePresence mode="wait">
 
-            {/* ═══════════════════════════════════════════════════════════════
-                STEP 1 – DADOS BÁSICOS
-            ═══════════════════════════════════════════════════════════════ */}
+            {/* ── STEP 1: IDENTIFICAÇÃO ── */}
             {step === 1 && (
               <motion.div key="s1" variants={SLIDE} initial="hidden" animate="visible" exit="exit" className="space-y-4">
                 <FieldGroup label="CPF *">
-                  <IconInput
-                    icon={User}
-                    type="text"
-                    inputMode="numeric"
-                    autoComplete="off"
-                    autoFocus
-                    placeholder="000.000.000-00"
-                    value={form.cpf}
-                    onChange={(e) => set("cpf", mascaraCPF(e.target.value))}
-                    errorMsg={cpfError}
-                  />
+                  <IconInput icon={User} type="text" inputMode="numeric" autoFocus placeholder="000.000.000-00" value={form.cpf} onChange={(e: any) => set("cpf", mascaraCPF(e.target.value))} errorMsg={cpfError} />
                 </FieldGroup>
-
-                <FieldGroup label="Nome completo *">
-                  <IconInput
-                    icon={UserRound}
-                    placeholder="Seu nome como no documento"
-                    value={form.nome_completo}
-                    onChange={(e) => set("nome_completo", e.target.value)}
-                  />
-                </FieldGroup>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <FieldGroup label="Data de nascimento *">
-                    <IconInput
-                      icon={Calendar}
-                      type="date"
-                      value={form.data_nascimento}
-                      onChange={(e) => set("data_nascimento", e.target.value)}
-                    />
-                  </FieldGroup>
-                  <FieldGroup label="Telefone *">
-                    <IconInput
-                      icon={Phone}
-                      inputMode="numeric"
-                      placeholder="(00) 90000-0000"
-                      value={form.telefone}
-                      onChange={(e) => set("telefone", mascaraTelefone(e.target.value))}
-                    />
-                  </FieldGroup>
-                </div>
-
-                {/* Aviso automático para menores */}
-                {isMenor && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }}
-                    className="flex items-start gap-2 rounded-xl p-3 bg-amber-500/10 border border-amber-500/20"
-                  >
-                    <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
-                    <p className="text-[12px] text-amber-300 leading-relaxed">
-                      Como você possui menos de 18 anos, será necessário informar dados do responsável legal na próxima etapa.
-                    </p>
-                  </motion.div>
-                )}
-
+                
                 <FieldGroup label="E-mail *">
-                  <IconInput
-                    icon={Mail}
-                    type="email"
-                    placeholder="email@exemplo.com"
-                    value={form.email}
-                    onChange={(e) => set("email", e.target.value)}
-                  />
+                  <IconInput icon={Mail} type="email" placeholder="email@exemplo.com" value={form.email} onChange={(e: any) => set("email", e.target.value)} />
                 </FieldGroup>
 
-                <button onClick={handleNext} disabled={!!cpfError} className="btn-primary mt-2">
-                  Continuar
+                <button onClick={() => handleRequestOTP(false)} disabled={!!cpfError || !form.email || isLoading} className="btn-primary mt-2">
+                  {isLoading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : "Validar E-mail"}
                 </button>
 
-                <p className="text-center text-[13px] text-zinc-500 pt-1">
-                  Já possui conta?{" "}
-                  <Link href="/login" className="text-secondary hover:text-secondary-light font-medium transition-colors">
-                    Faça login
-                  </Link>
+                <p className="text-center text-[13px] text-slate-500 pt-1">
+                  Já possui conta? <Link href="/login" className="text-secondary hover:text-secondary-light font-medium transition-colors">Faça login</Link>
                 </p>
               </motion.div>
             )}
 
-            {/* ═══════════════════════════════════════════════════════════════
-                STEP 1.5 – RESPONSÁVEL LEGAL (< 18 anos)
-            ═══════════════════════════════════════════════════════════════ */}
-            {step === 1.5 && (
-              <motion.div key="s1_5" variants={SLIDE} initial="hidden" animate="visible" exit="exit" className="space-y-5">
-                <div className="text-center pb-4">
-                  <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl
-                                  bg-amber-500/10 border border-amber-500/20 text-amber-400 mb-3">
-                    <UserRound className="w-7 h-7" />
+            {/* ── STEP 2: CÓDIGO OTP (Com Reenvio) ── */}
+            {step === 2 && (
+              <motion.div key="s2" variants={SLIDE} initial="hidden" animate="visible" exit="exit" className="space-y-4">
+                <div className="text-center pb-2">
+                  <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-blue-500/10 text-blue-400 mb-3">
+                    <Mail className="w-7 h-7" />
                   </div>
-                  <h2 className="text-[16px] font-semibold text-zinc-100">Responsável Legal</h2>
-                  <p className="text-[13px] text-zinc-500 mt-1 max-w-xs mx-auto leading-relaxed">
-                    Por ser menor de 18 anos, precisamos dos dados do seu responsável.
+                  <h2 className="text-[18px] font-bold text-slate-100">Verifique seu E-mail</h2>
+                  <p className="text-[14px] text-slate-400 mt-2 leading-relaxed">
+                    Nós enviamos um código para <br/><strong className="text-white">{form.email}</strong>
+                  </p>
+                  <button onClick={() => setStep(1)} className="text-[12px] text-secondary hover:text-secondary-light underline underline-offset-2 mt-1">
+                    E-mail incorreto? Alterar
+                  </button>
+                </div>
+
+                <div className="p-4 bg-white/5 border border-white/10 rounded-xl mb-4 text-center">
+                  <p className="text-[13px] text-slate-300">
+                    Abra seu e-mail (celular ou computador), veja o <strong>código de 6 números</strong> e digite abaixo:
                   </p>
                 </div>
 
-                <FieldGroup label="CPF do Responsável *">
-                  <IconInput
-                    icon={User}
-                    inputMode="numeric"
+                <FieldGroup label="">
+                  <IconInput 
+                    icon={KeyRound} type="text" maxLength={6} placeholder="000000" 
                     autoFocus
-                    placeholder="000.000.000-00"
-                    value={form.responsavel_cpf}
-                    onChange={(e) => set("responsavel_cpf", mascaraCPF(e.target.value))}
-                    errorMsg={cpfRespError}
+                    className="text-center tracking-[1em] font-mono text-xl h-14" 
+                    value={form.otp} onChange={(e: any) => set("otp", e.target.value.replace(/\D/g, ""))} 
                   />
                 </FieldGroup>
 
-                <FieldGroup label="Nome completo do Responsável *">
-                  <IconInput
-                    icon={UserRound}
-                    placeholder="Pai, mãe ou responsável legal"
-                    value={form.responsavel_nome}
-                    onChange={(e) => set("responsavel_nome", e.target.value)}
-                  />
-                </FieldGroup>
-
-                <button
-                  onClick={handleNext}
-                  disabled={!!cpfRespError || cpfRespLimpo.length !== 11 || !form.responsavel_nome}
-                  className="btn-primary"
+                <button 
+                  onClick={handleVerifyOTP} 
+                  disabled={form.otp.length !== 6 || isLoading || otpAttempts >= 3} 
+                  className="btn-primary mt-2 h-12"
                 >
-                  Continuar
+                  {isLoading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : "Confirmar Código"}
                 </button>
+
+                <div className="text-center mt-2">
+                  <button
+                    type="button"
+                    onClick={() => handleRequestOTP(true)}
+                    disabled={countdown > 0 || isLoading}
+                    className="text-[13px] font-medium text-slate-400 hover:text-white disabled:opacity-50 disabled:hover:text-slate-400 transition-colors"
+                  >
+                    {countdown > 0 
+                      ? `Reenviar código em ${formatTempo(countdown)}`
+                      : "Não recebeu? Reenviar código"
+                    }
+                  </button>
+                </div>
               </motion.div>
             )}
 
-            {/* ═══════════════════════════════════════════════════════════════
-                STEP 2 – TIPO DE VÍNCULO
-            ═══════════════════════════════════════════════════════════════ */}
-            {step === 2 && (
-              <motion.div key="s2" variants={SLIDE} initial="hidden" animate="visible" exit="exit" className="space-y-3">
+            {/* ── STEP 3: DADOS PESSOAIS ── */}
+            {step === 3 && (
+              <motion.div key="s3" variants={SLIDE} initial="hidden" animate="visible" exit="exit" className="space-y-4">
+                <FieldGroup label="Nome completo *">
+                  <IconInput icon={UserRound} autoFocus placeholder="Nome como no documento" value={form.nome_completo} onChange={(e: any) => set("nome_completo", e.target.value)} />
+                </FieldGroup>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <FieldGroup label="Data de nascimento *">
+                    <IconInput icon={Calendar} type="date" value={form.data_nascimento} onChange={(e: any) => set("data_nascimento", e.target.value)} />
+                  </FieldGroup>
+                  <FieldGroup label="Telefone *">
+                    <IconInput icon={Phone} inputMode="numeric" placeholder="(00) 90000-0000" value={form.telefone} onChange={(e: any) => set("telefone", mascaraTelefone(e.target.value))} />
+                  </FieldGroup>
+                </div>
+
+                {isMenor && (
+                  <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} className="flex items-start gap-2 rounded-xl p-3 bg-amber-500/10 border border-amber-500/20">
+                    <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+                    <p className="text-[12px] text-amber-300 leading-relaxed">
+                      Como você possui menos de 18 anos, informaremos dados do responsável na próxima etapa.
+                    </p>
+                  </motion.div>
+                )}
+
+                <button onClick={handleNext} className="btn-primary mt-2">Continuar</button>
+              </motion.div>
+            )}
+
+            {/* ── STEP 3.5: RESPONSÁVEL LEGAL ── */}
+            {step === 3.5 && (
+              <motion.div key="s3_5" variants={SLIDE} initial="hidden" animate="visible" exit="exit" className="space-y-5">
+                <div className="text-center pb-4">
+                  <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 mb-3">
+                    <UserRound className="w-7 h-7" />
+                  </div>
+                  <h2 className="text-[16px] font-semibold text-slate-100">Responsável Legal</h2>
+                </div>
+
+                <FieldGroup label="CPF do Responsável *">
+                  <IconInput icon={User} inputMode="numeric" autoFocus placeholder="000.000.000-00" value={form.responsavel_cpf} onChange={(e: any) => set("responsavel_cpf", mascaraCPF(e.target.value))} errorMsg={cpfRespError} />
+                </FieldGroup>
+
+                <FieldGroup label="Nome completo do Responsável *">
+                  <IconInput icon={UserRound} placeholder="Pai, mãe ou responsável legal" value={form.responsavel_nome} onChange={(e: any) => set("responsavel_nome", e.target.value)} />
+                </FieldGroup>
+
+                <button onClick={handleNext} disabled={!!cpfRespError || cpfRespLimpo.length !== 11 || !form.responsavel_nome} className="btn-primary">Continuar</button>
+              </motion.div>
+            )}
+
+            {/* ── STEP 4: VÍNCULO ── */}
+            {step === 4 && (
+              <motion.div key="s4" variants={SLIDE} initial="hidden" animate="visible" exit="exit" className="space-y-3">
                 <div className="text-center pb-2">
-                  <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl
-                                  bg-primary/20 border border-primary/25 text-primary-light mb-3">
+                  <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-primary/20 border border-primary/25 text-primary-light mb-3">
                     <Briefcase className="w-6 h-6" />
                   </div>
-                  <h2 className="text-[16px] font-semibold text-zinc-100">Qual seu vínculo?</h2>
-                  <p className="text-[13px] text-zinc-500 mt-1">Isso determina seus acessos no Portal.</p>
+                  <h2 className="text-[16px] font-semibold text-slate-100">Qual seu vínculo?</h2>
+                  <p className="text-[13px] text-slate-500 mt-1">Isso determina seus acessos no Portal.</p>
                 </div>
 
                 {tiposVinculo.map((tipo) => {
                   const isSelected = form.tipo_usuario === tipo.id;
                   return (
-                    <button
-                      key={tipo.id}
-                      onClick={() => set("tipo_usuario", tipo.id)}
-                      className={cn(
-                        "w-full p-4 rounded-2xl border text-left flex items-center justify-between",
-                        "transition-all duration-200 active:scale-[0.99]",
-                        isSelected
-                          ? "border-primary/60 bg-primary/[0.12] shadow-[0_0_20px_rgba(0,64,54,0.18)]"
-                          : "border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.04] hover:border-white/10"
-                      )}
-                    >
+                    <button key={tipo.id} onClick={() => set("tipo_usuario", tipo.id)} className={cn("w-full p-4 rounded-2xl border text-left flex items-center justify-between transition-all duration-200 active:scale-[0.99]", isSelected ? "border-primary/60 bg-primary/[0.12] shadow-[0_0_20px_rgba(37,99,235,0.18)]" : "border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.04]")}>
                       <div>
-                        <span className={cn(
-                          "block text-sm font-semibold mb-0.5",
-                          isSelected ? "text-zinc-100" : "text-zinc-300"
-                        )}>
-                          {tipo.label}
-                        </span>
-                        <span className="text-[12px] text-zinc-500">{tipo.desc}</span>
+                        <span className={cn("block text-sm font-semibold mb-0.5", isSelected ? "text-slate-100" : "text-slate-300")}>{tipo.label}</span>
+                        <span className="text-[12px] text-slate-500">{tipo.desc}</span>
                       </div>
-                      <div className={cn(
-                        "w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ml-3",
-                        isSelected ? "border-primary bg-primary" : "border-zinc-700"
-                      )}>
+                      <div className={cn("w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ml-3", isSelected ? "border-primary bg-primary" : "border-slate-700")}>
                         {isSelected && <div className="w-2 h-2 rounded-full bg-white" />}
                       </div>
                     </button>
                   );
                 })}
-
-                <button onClick={handleNext} className="btn-primary !mt-5">
-                  Confirmar Vínculo
-                </button>
+                <button onClick={handleNext} className="btn-primary !mt-5">Confirmar Vínculo</button>
               </motion.div>
             )}
 
-            {/* ═══════════════════════════════════════════════════════════════
-                STEP 3 – DADOS FUNCIONAIS (condicional por tipo)
-            ═══════════════════════════════════════════════════════════════ */}
-            {step === 3 && (
-              <motion.div key="s3" variants={SLIDE} initial="hidden" animate="visible" exit="exit" className="space-y-4">
+            {/* ── STEP 5: DADOS FUNCIONAIS ── */}
+            {step === 5 && (
+              <motion.div key="s5" variants={SLIDE} initial="hidden" animate="visible" exit="exit" className="space-y-4">
                 <div className="text-center pb-2">
-                  <h2 className="text-[16px] font-semibold text-zinc-100">Dados da Lotação</h2>
-                  <p className="text-[13px] text-zinc-500 mt-1">Informações sobre seu órgão ou empresa.</p>
+                  <h2 className="text-[16px] font-semibold text-slate-100">Dados da Lotação</h2>
+                  <p className="text-[13px] text-slate-500 mt-1">Informações sobre seu órgão ou empresa.</p>
                 </div>
-
-                {/* Matrícula → APENAS Servidor Ativo */}
                 {form.tipo_usuario === "SERVIDOR_ATIVO" && (
                   <FieldGroup label="Matrícula funcional *">
-                    <IconInput
-                      autoFocus
-                      placeholder="N° da sua matrícula"
-                      value={form.matricula}
-                      onChange={(e) => set("matricula", e.target.value)}
-                    />
+                    <IconInput autoFocus placeholder="N° da sua matrícula" value={form.matricula} onChange={(e: any) => set("matricula", e.target.value)} />
                   </FieldGroup>
                 )}
-
-                {/* Empresa/Órgão → Terceirizado e Estagiário */}
                 {(form.tipo_usuario === "TERCEIRIZADO" || form.tipo_usuario === "ESTAGIARIO") && (
                   <FieldGroup label={form.tipo_usuario === "TERCEIRIZADO" ? "Empresa contratada" : "Empresa / Órgão do estágio"}>
-                    <IconInput
-                      autoFocus
-                      placeholder={form.tipo_usuario === "TERCEIRIZADO" ? "Nome da empresa" : "Empresa ou órgão vinculante"}
-                      value={form.empresa}
-                      onChange={(e) => set("empresa", e.target.value)}
-                    />
+                    <IconInput autoFocus placeholder={form.tipo_usuario === "TERCEIRIZADO" ? "Nome da empresa" : "Empresa ou órgão vinculante"} value={form.empresa} onChange={(e: any) => set("empresa", e.target.value)} />
                   </FieldGroup>
                 )}
-
                 <FieldGroup label="Secretaria / Setor">
-                  <IconInput
-                    placeholder="Ex: Sec. de Educação, Saúde..."
-                    value={form.secretaria}
-                    onChange={(e) => set("secretaria", e.target.value)}
-                  />
+                  <IconInput placeholder="Ex: Sec. de Educação, Saúde..." value={form.secretaria} onChange={(e: any) => set("secretaria", e.target.value)} />
                 </FieldGroup>
-
                 <FieldGroup label="E-mail da chefia imediata">
-                  <IconInput
-                    icon={Mail}
-                    type="email"
-                    placeholder="Utilizado em requerimentos de curso"
-                    value={form.email_chefe}
-                    onChange={(e) => set("email_chefe", e.target.value)}
-                  />
+                  <IconInput icon={Mail} type="email" placeholder="Utilizado em requerimentos" value={form.email_chefe} onChange={(e: any) => set("email_chefe", e.target.value)} />
                 </FieldGroup>
-
-                <button onClick={handleNext} className="btn-primary mt-2">
-                  Avançar para Senha
-                </button>
+                <button onClick={handleNext} className="btn-primary mt-2">Avançar para Senha</button>
               </motion.div>
             )}
 
-            {/* ═══════════════════════════════════════════════════════════════
-                STEP 4 – CRIAÇÃO DE SENHA
-            ═══════════════════════════════════════════════════════════════ */}
-            {step === 4 && (
-              <motion.form
-                key="s4"
-                variants={SLIDE} initial="hidden" animate="visible" exit="exit"
-                onSubmit={handleSubmit}
-                className="space-y-4"
-              >
+            {/* ── STEP 6: SENHA ── */}
+            {step === 6 && (
+              <motion.form key="s6" variants={SLIDE} initial="hidden" animate="visible" exit="exit" onSubmit={handleSubmit} className="space-y-4">
                 <div className="text-center pb-2">
-                  <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl
-                                  bg-success/10 border border-success/20 text-success-light mb-3">
+                  <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-success/10 border border-success/20 text-success-light mb-3">
                     <Lock className="w-6 h-6" />
                   </div>
-                  <h2 className="text-[16px] font-semibold text-zinc-100">Definir Senha</h2>
-                  <p className="text-[13px] text-zinc-500 mt-1">Última etapa para proteger sua conta.</p>
+                  <h2 className="text-[16px] font-semibold text-slate-100">Definir Senha</h2>
+                  <p className="text-[13px] text-slate-500 mt-1">Sua conta já está validada. Finalize criando a senha.</p>
                 </div>
-
                 <FieldGroup label="Senha (mínimo 6 caracteres)">
-                  <IconInput
-                    icon={Lock}
-                    type="password"
-                    autoFocus
-                    placeholder="••••••••"
-                    value={form.password}
-                    onChange={(e) => set("password", e.target.value)}
-                  />
+                  <IconInput icon={Lock} type="password" autoFocus placeholder="••••••••" value={form.password} onChange={(e: any) => set("password", e.target.value)} />
                 </FieldGroup>
-
                 <FieldGroup label="Confirme a senha">
-                  <IconInput
-                    icon={Lock}
-                    type="password"
-                    placeholder="••••••••"
-                    value={form.passwordConfirm}
-                    onChange={(e) => set("passwordConfirm", e.target.value)}
-                    errorMsg={
-                      form.passwordConfirm && form.password !== form.passwordConfirm
-                        ? "As senhas não coincidem."
-                        : undefined
-                    }
-                  />
+                  <IconInput icon={Lock} type="password" placeholder="••••••••" value={form.passwordConfirm} onChange={(e: any) => set("passwordConfirm", e.target.value)} errorMsg={form.passwordConfirm && form.password !== form.passwordConfirm ? "As senhas não coincidem." : undefined} />
                 </FieldGroup>
-
-                <button
-                  type="submit"
-                  disabled={
-                    isLoading ||
-                    form.password.length < 6 ||
-                    form.password !== form.passwordConfirm
-                  }
-                  className="btn-success relative overflow-hidden group mt-2"
-                >
-                  {/* Shimmer no botão de conclusão */}
+                <button type="submit" disabled={isLoading || form.password.length < 6 || form.password !== form.passwordConfirm} className="btn-success relative overflow-hidden group mt-2">
                   <span className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/10 to-transparent group-hover:animate-shimmer" />
-                  {isLoading
-                    ? <Loader2 className="w-5 h-5 animate-spin mx-auto" />
-                    : (
-                      <span className="flex items-center justify-center gap-2">
-                        <CheckCircle2 className="w-5 h-5" />
-                        Concluir Cadastro
-                      </span>
-                    )}
+                  {isLoading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : (
+                    <span className="flex items-center justify-center gap-2">
+                      <CheckCircle2 className="w-5 h-5" /> Concluir Cadastro
+                    </span>
+                  )}
                 </button>
               </motion.form>
             )}

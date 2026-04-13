@@ -1,243 +1,150 @@
 "use client";
 
-/**
- * components/cursos/CursoCard.tsx
- * ────────────────────────────────
- * Card premium para exibição de um Curso no catálogo.
- *
- * Exibe:
- *  - Imagem de capa (R2) ou gradiente de fallback
- *  - Código oficial + badge de tipo (Centralizado/Descentralizado)
- *  - Título
- *  - Badge de status geral com cor semântica
- *  - Turmas: carga horária somada, período (1ª data_inicio → última data_fim)
- *  - Número de vagas totais
- */
-
+import { useState } from "react";
 import Image from "next/image";
-import { Calendar, Clock, MapPin, Users } from "lucide-react";
-import { Curso, StatusTurma } from "@/types/cursos";
-
-// ─── Mapeamento de status → aparência ────────────────────────────────────────
-
-const STATUS_META: Record<
-  StatusTurma,
-  { label: string; dot: string; bg: string; text: string }
-> = {
-  EM_ANDAMENTO: {
-    label: "Em Andamento",
-    dot:  "bg-emerald-400",
-    bg:   "bg-emerald-500/10 border-emerald-500/20",
-    text: "text-emerald-400",
-  },
-  PREVISTA: {
-    label: "Prevista",
-    dot:  "bg-sky-400",
-    bg:   "bg-sky-500/10 border-sky-500/20",
-    text: "text-sky-400",
-  },
-  CONCLUIDA: {
-    label: "Concluída",
-    dot:  "bg-zinc-400",
-    bg:   "bg-zinc-500/10 border-zinc-500/20",
-    text: "text-zinc-400",
-  },
-  FINALIZADA: {
-    label: "Finalizada",
-    dot:  "bg-slate-400",
-    bg:   "bg-slate-500/10 border-slate-500/20",
-    text: "text-slate-400",
-  },
-  ADIADA: {
-    label: "Adiada",
-    dot:  "bg-amber-400",
-    bg:   "bg-amber-500/10 border-amber-500/20",
-    text: "text-amber-400",
-  },
-  CANCELADA: {
-    label: "Cancelada",
-    dot:  "bg-red-400",
-    bg:   "bg-red-500/10 border-red-500/20",
-    text: "text-red-400",
-  },
-  SEM_TURMAS: {
-    label: "Sem Turmas",
-    dot:  "bg-zinc-600",
-    bg:   "bg-zinc-700/20 border-zinc-700/30",
-    text: "text-zinc-500",
-  },
-};
-
-// ─── Helpers ───────────────────────────────────────────────────────────────────
-
-function formatDate(iso: string) {
-  return new Date(iso + "T00:00:00").toLocaleDateString("pt-BR", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
-}
-
-// ─── Componente ────────────────────────────────────────────────────────────────
+import { Curso } from "@/types/cursos";
+import { 
+  Clock, MapPin, MonitorPlay, Users, 
+  CalendarDays, ChevronDown, CheckCircle2 
+} from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { cn } from "@/lib/utils";
 
 interface CursoCardProps {
   curso: Curso;
-  imagemUrl?: string | null;
+  imagemUrl: string | null;
 }
 
 export default function CursoCard({ curso, imagemUrl }: CursoCardProps) {
-  const meta = STATUS_META[curso.status_geral] ?? STATUS_META.SEM_TURMAS;
+  const [isExpanded, setIsExpanded] = useState(false);
+  const temTurmas = curso.turmas && curso.turmas.length > 0;
 
-  // Período: menor data_inicio → maior data_fim entre todas as turmas
-  const datas = curso.turmas.map((t) => ({
-    inicio: t.data_inicio,
-    fim:    t.data_fim,
-  }));
-  const periodoInicio = datas.length
-    ? datas.reduce((a, b) => (a.inicio < b.inicio ? a : b)).inicio
-    : null;
-  const periodoFim = datas.length
-    ? datas.reduce((a, b) => (a.fim > b.fim ? a : b)).fim
-    : null;
-
-  // Carga horária: soma das turmas (turmas distintas podem ter CH diferente)
-  const cargaTotal = curso.turmas.reduce((acc, t) => acc + t.carga_horaria, 0);
-
-  // Total de vagas
-  const vagasTotal = curso.turmas.reduce((acc, t) => acc + t.vagas, 0);
+  const formatDate = (dateStr: string | null) => {
+    if (!dateStr) return "--";
+    const [ano, mes, dia] = dateStr.split('-');
+    return `${dia}/${mes}`;
+  };
 
   return (
-    <article
-      className="
-        group relative flex flex-col rounded-2xl overflow-hidden
-        bg-[var(--surface)] border border-white/[0.06]
-        shadow-[0_8px_32px_rgba(0,0,0,0.4)]
-        hover:border-secondary/30 hover:shadow-[0_12px_40px_rgba(0,145,159,0.12)]
-        transition-all duration-300 ease-out
-        hover:-translate-y-1
-      "
-    >
-      {/* ── Imagem de capa ───────────────────────────────────────────────────── */}
-      <div className="relative h-44 w-full overflow-hidden bg-gradient-to-br from-primary/40 to-secondary/20 flex-shrink-0">
+    <div className="glass-card flex flex-col overflow-hidden transition-all duration-300 hover:border-white/10 group">
+      
+      {/* ── Capa do Curso ── */}
+      <div className="relative h-40 bg-slate-800/50 w-full flex-shrink-0 border-b border-white/5">
         {imagemUrl ? (
-          <Image
-            src={imagemUrl}
-            alt={`Capa do curso ${curso.titulo}`}
-            fill
-            className="object-cover transition-transform duration-500 group-hover:scale-105"
-            unoptimized
-          />
+          <Image src={imagemUrl} alt={curso.titulo} fill className="object-cover opacity-80 group-hover:opacity-100 transition-opacity" unoptimized />
         ) : (
-          // Fallback artístico com código e gradiente
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2
-                          bg-gradient-to-br from-primary/60 via-primary/30 to-secondary/20">
-            <span className="text-4xl font-black text-white/10 select-none tracking-tighter">
-              EGPC
-            </span>
-            <span className="text-xs font-mono text-white/20 tracking-widest">
-              {curso.codigo_oficial}
-            </span>
+          <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-600 bg-gradient-to-br from-[#0f172a] to-[#020617]">
+            <MonitorPlay className="w-8 h-8 opacity-50 mb-2" />
+            <span className="text-[10px] font-bold uppercase tracking-widest opacity-50">EGPC</span>
           </div>
         )}
-
-        {/* Overlay gradiente inferior */}
-        <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-[var(--surface)] to-transparent" />
-
-        {/* Badge de tipo */}
-        <div className="absolute top-3 left-3">
-          <span className="
-            inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold
-            uppercase tracking-wider bg-black/50 backdrop-blur-sm text-zinc-300 border border-white/10
-          ">
-            {curso.tipo === "CENTRALIZADO" ? "Centralizado" : "Descentralizado"}
-          </span>
+        
+        {/* Badge Categoria */}
+        <div className="absolute top-3 left-3 px-2.5 py-1 rounded-md bg-black/60 backdrop-blur-md border border-white/10 text-[10px] font-bold text-slate-200 uppercase tracking-wider">
+          {curso.categoria_nome || "Geral"}
         </div>
       </div>
 
-      {/* ── Corpo ────────────────────────────────────────────────────────────── */}
-      <div className="flex flex-col flex-1 p-5 gap-3">
-
-        {/* Código + Status */}
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-[11px] font-mono font-semibold text-secondary/80 tracking-wider">
-            {curso.codigo_oficial}
-          </span>
-          <span
-            className={`
-              inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full
-              text-[11px] font-semibold border
-              ${meta.bg} ${meta.text}
-            `}
-          >
-            <span className={`w-1.5 h-1.5 rounded-full ${meta.dot} animate-pulse`} />
-            {meta.label}
-          </span>
-        </div>
-
-        {/* Título */}
-        <h3 className="text-[15px] font-bold text-zinc-100 leading-snug line-clamp-2 group-hover:text-white transition-colors">
+      {/* ── Informações Básicas ── */}
+      <div className="p-5 flex-1 flex flex-col">
+        <h3 className="text-[16px] font-bold text-slate-100 leading-snug line-clamp-2" title={curso.titulo}>
           {curso.titulo}
         </h3>
-
-        {/* Ementa (preview) */}
-        <p className="text-[12px] text-zinc-500 leading-relaxed line-clamp-2 flex-1">
-          {curso.ementa}
+        
+        <p className="text-[13px] text-slate-400 mt-2 line-clamp-2 flex-1">
+          {curso.descricao || "Nenhuma descrição informada para este curso."}
         </p>
 
-        {/* ── Metadados ────────────────────────────────────────────────────── */}
-        <div className="pt-3 border-t border-white/[0.05] grid grid-cols-2 gap-y-2 gap-x-3">
-
-          {/* Período */}
-          {periodoInicio && periodoFim && (
-            <div className="col-span-2 flex items-center gap-2 text-[11px] text-zinc-500">
-              <Calendar className="w-3.5 h-3.5 text-secondary/60 flex-shrink-0" />
-              <span>
-                {formatDate(periodoInicio)}{" "}
-                <span className="text-zinc-600 mx-0.5">→</span>{" "}
-                {formatDate(periodoFim)}
-              </span>
-            </div>
-          )}
-
-          {/* Carga horária */}
-          <div className="flex items-center gap-2 text-[11px] text-zinc-500">
-            <Clock className="w-3.5 h-3.5 text-secondary/60 flex-shrink-0" />
-            <span>
-              {cargaTotal > 0 ? (
-                <><strong className="text-zinc-300">{cargaTotal}h</strong> carga horária</>
-              ) : (
-                "—"
-              )}
-            </span>
+        <div className="flex items-center gap-4 mt-4 pt-4 border-t border-white/5">
+          <div className="flex items-center gap-1.5 text-slate-400">
+            <Clock className="w-4 h-4" />
+            <span className="text-[12px] font-medium">{curso.carga_horaria}h</span>
           </div>
-
-          {/* Vagas */}
-          <div className="flex items-center gap-2 text-[11px] text-zinc-500">
-            <Users className="w-3.5 h-3.5 text-secondary/60 flex-shrink-0" />
-            <span>
-              {vagasTotal > 0 ? (
-                <><strong className="text-zinc-300">{vagasTotal}</strong> vaga{vagasTotal !== 1 ? "s" : ""}</>
-              ) : (
-                "—"
-              )}
-            </span>
-          </div>
-
-          {/* Turmas */}
-          {curso.turmas.length > 0 && (
-            <div className="col-span-2 flex items-center gap-2 text-[11px] text-zinc-500">
-              <MapPin className="w-3.5 h-3.5 text-secondary/60 flex-shrink-0" />
-              <span>
-                {curso.turmas.length} turma{curso.turmas.length !== 1 ? "s" : ""}
-                {" "}
-                <span className="text-zinc-600">
-                  ({curso.turmas.map((t) => t.letra).join(", ")})
-                </span>
-              </span>
-            </div>
-          )}
         </div>
       </div>
-    </article>
+
+      {/* ── Botão Expansor ── */}
+      <button 
+        onClick={() => setIsExpanded(!isExpanded)}
+        disabled={!temTurmas}
+        className={cn(
+          "w-full p-4 border-t flex items-center justify-between transition-colors",
+          isExpanded ? "bg-white/5 border-white/10" : "bg-transparent border-white/5",
+          temTurmas ? "hover:bg-white/5 cursor-pointer" : "cursor-not-allowed opacity-50"
+        )}
+      >
+        <span className="text-[13px] font-semibold text-slate-300">
+          {temTurmas ? `${curso.turmas?.length} Turma(s) Aberta(s)` : "Sem turmas no momento"}
+        </span>
+        {temTurmas && (
+          <ChevronDown className={cn("w-4 h-4 text-slate-400 transition-transform duration-300", isExpanded && "rotate-180")} />
+        )}
+      </button>
+
+      {/* ── Lista de Turmas (Acordeão) ── */}
+      <AnimatePresence>
+        {isExpanded && temTurmas && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="overflow-hidden bg-[#09090b] border-t border-white/5"
+          >
+            <div className="p-3 space-y-3">
+              {curso.turmas?.map((turma) => (
+                <div key={turma.id} className="p-3 rounded-xl border border-white/10 bg-white/[0.02] hover:bg-white/[0.04] transition-colors">
+                  
+                  <div className="flex justify-between items-start mb-2">
+                    <span className="text-[12px] font-bold text-slate-200">Turma {turma.codigo}</span>
+                    <span className={cn(
+                      "text-[10px] font-bold px-2 py-0.5 rounded uppercase",
+                      turma.modalidade === "EAD" ? "bg-blue-500/20 text-blue-400" : 
+                      turma.modalidade === "HIBRIDO" ? "bg-purple-500/20 text-purple-400" : "bg-emerald-500/20 text-emerald-400"
+                    )}>
+                      {turma.modalidade}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 mb-4">
+                    <div className="flex items-center gap-1.5 text-slate-400">
+                      <CalendarDays className="w-3.5 h-3.5" />
+                      <span className="text-[11px]">{formatDate(turma.data_inicio)} até {formatDate(turma.data_fim)}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-slate-400">
+                      <Clock className="w-3.5 h-3.5" />
+                      <span className="text-[11px]">{turma.hora_inicio?.slice(0,5) || '--'} às {turma.hora_fim?.slice(0,5) || '--'}</span>
+                    </div>
+                  </div>
+
+                  {/* Barra de Vagas */}
+                  <div className="mb-4">
+                    <div className="flex justify-between text-[11px] mb-1">
+                      <span className="text-slate-400">Vagas disponíveis</span>
+                      <span className={cn("font-bold", turma.vagas_disponiveis < 5 ? "text-red-400" : "text-emerald-400")}>
+                        {turma.vagas_disponiveis} / {turma.vagas_totais}
+                      </span>
+                    </div>
+                    <div className="h-1.5 w-full bg-white/10 rounded-full overflow-hidden">
+                      <div 
+                        className={cn("h-full rounded-full transition-all duration-500", turma.vagas_disponiveis < 5 ? "bg-red-500" : "bg-emerald-500")} 
+                        style={{ width: `${(turma.vagas_disponiveis / turma.vagas_totais) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Botão de Matrícula (Visual por enquanto) */}
+                  <button 
+                    disabled={turma.vagas_disponiveis === 0}
+                    className="w-full py-2 rounded-lg text-[13px] font-semibold bg-primary hover:bg-primary-light text-white disabled:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {turma.vagas_disponiveis === 0 ? "Turma Lotada" : "Solicitar Matrícula"}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
   );
 }

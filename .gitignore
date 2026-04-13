@@ -34,3 +34,4 @@ yarn-error.log*
 .vscode/
 .idea/
 contexto_projeto.txt
+gerar_contexto.py

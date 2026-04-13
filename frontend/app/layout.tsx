@@ -16,18 +16,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="font-sans antialiased">
         {children}
         {/* Toaster global - utilizado em todas as páginas para feedback elegante */}
-        <Toaster
+<Toaster
           richColors
+          theme="dark"
           position="top-right"
-          toastOptions={{
-            style: {
-              background: "#0d1f1b",
-              border: "1px solid rgba(255,255,255,0.08)",
-              color: "#f4f4f5",
-              fontSize: "14px",
-              borderRadius: "14px",
-            },
-          }}
         />
       </body>
     </html>

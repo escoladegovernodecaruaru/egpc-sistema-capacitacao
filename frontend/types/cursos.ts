@@ -1,37 +1,31 @@
-/**
- * types/cursos.ts
- * ──────────────
- * Tipos que espelham os serializers do backend (cursos/serializers.py).
- */
+// frontend/types/cursos.ts
 
-export type StatusTurma =
-  | 'PREVISTA'
-  | 'EM_ANDAMENTO'
-  | 'CONCLUIDA'
-  | 'FINALIZADA'
-  | 'ADIADA'
-  | 'CANCELADA'
-  | 'SEM_TURMAS';
+export type StatusTurma = "PREVISTA" | "EM_ANDAMENTO" | "CONCLUIDA" | "ADIADA" | "CANCELADA" | "SEM_TURMAS";
+export type ModalidadeTurma = "PRESENCIAL" | "EAD" | "HIBRIDO";
 
 export interface Turma {
   id: number;
-  letra: string;
-  codigo_turma: string;
+  codigo: string;
+  modalidade: ModalidadeTurma;
+  data_inicio: string | null;
+  data_fim: string | null;
+  hora_inicio: string | null;
+  hora_fim: string | null;
+  vagas_totais: number;
+  vagas_disponiveis: number;
   instrutor_nome: string | null;
-  local: string;
-  vagas: number;
-  carga_horaria: number;
-  data_inicio: string; // ISO 'YYYY-MM-DD'
-  data_fim: string;
-  status_calculado: StatusTurma;
+  status: StatusTurma;
 }
 
 export interface Curso {
   id: number;
-  codigo_oficial: string;
   titulo: string;
-  ementa: string;
-  tipo: 'CENTRALIZADO' | 'DESCENTRALIZADO';
+  slug: string;
+  descricao: string;
+  carga_horaria: number;
+  eixo_tematico: string;
+  categoria: number;
+  categoria_nome?: string;
   status_geral: StatusTurma;
-  turmas: Turma[];
+  turmas?: Turma[];
 }

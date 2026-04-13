@@ -16,4 +16,4 @@ class CursoListView(generics.ListAPIView):
     permission_classes = [AllowAny]
 
     def get_queryset(self):
-        return Curso.objects.filter(ativo=True).order_by('-data_inicio')
+        return Curso.objects.filter(is_active=True).order_by('-criado_em')

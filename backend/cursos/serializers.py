@@ -10,47 +10,31 @@ Serialização do Módulo de Cursos para a API pública.
 from rest_framework import serializers
 from .models import Curso, Turma
 
-
 class TurmaSerializer(serializers.ModelSerializer):
-    """Serializa os dados públicos de uma Turma."""
-    codigo_turma      = serializers.ReadOnlyField()
-    status_calculado  = serializers.ReadOnlyField()
-    instrutor_nome    = serializers.SerializerMethodField()
-
+    instrutor_nome = serializers.CharField(source='instrutor.nome_completo', read_only=True)
+    
     class Meta:
         model = Turma
         fields = [
-            'id',
-            'letra',
-            'codigo_turma',
-            'instrutor_nome',
-            'local',
-            'vagas',
-            'carga_horaria',
-            'data_inicio',
-            'data_fim',
-            'status_calculado',
+            'id', 'codigo', 'modalidade', 'data_inicio', 'data_fim', 
+            'hora_inicio', 'hora_fim', 'vagas_totais', 'vagas_disponiveis', 
+            'instrutor_nome', 'status'
         ]
 
-    def get_instrutor_nome(self, obj):
-        if obj.instrutor:
-            return obj.instrutor.nome_social or obj.instrutor.nome_completo
-        return None
-
-
+# 2. Atualize o Serializer do Curso para puxar as turmas ativas
 class CursoSerializer(serializers.ModelSerializer):
-    """Serializa os dados públicos de um Curso com suas turmas."""
-    turmas       = TurmaSerializer(many=True, read_only=True)
-    status_geral = serializers.ReadOnlyField()
+    categoria_nome = serializers.CharField(source='categoria.nome', read_only=True)
+    # Traz apenas as turmas que não estão canceladas ou finalizadas
+    turmas = serializers.SerializerMethodField()
 
     class Meta:
         model = Curso
         fields = [
-            'id',
-            'codigo_oficial',
-            'titulo',
-            'ementa',
-            'tipo',
-            'status_geral',
-            'turmas',
+            'id', 'titulo', 'slug', 'descricao', 'carga_horaria', 
+            'eixo_tematico', 'categoria', 'categoria_nome', 'status_geral', 'turmas'
         ]
+        
+    def get_turmas(self, obj):
+        # Filtra turmas que ainda estão para começar ou em andamento e com vagas
+        turmas_ativas = obj.turmas.exclude(status__in=['CONCLUIDA', 'CANCELADA', 'ADIADA'])
+        return TurmaSerializer(turmas_ativas, many=True).data
