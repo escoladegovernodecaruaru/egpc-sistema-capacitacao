@@ -6,6 +6,5 @@ urlpatterns = [
     
     # Prefixamos todas as rotas da nossa API com /api/
     path('api/users/', include('users.urls', namespace='users')),
-    path('api/academics/', include('academics.urls', namespace='academics')),
     path('api/cursos/', include('cursos.urls', namespace='cursos')),
 ]

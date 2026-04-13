@@ -1,19 +1,23 @@
 from rest_framework import generics
-from rest_framework.permissions import AllowAny
-
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from .models import Curso
-from .serializers import CursoSerializer
+from .serializers import CursoSerializer, TurmaSerializer
+from users.authentication import SupabaseJWTAuthentication
 
-
-class CursoListView(generics.ListAPIView):
-    """
-    GET /api/cursos/
-    Retorna todos os cursos com ativo=True, ordenados por data de início.
-    Endpoint público — não exige autenticação para que o catálogo seja acessível
-    antes do login (ex: página inicial do portal).
-    """
+class CursoListView(generics.ListCreateAPIView):
     serializer_class = CursoSerializer
-    permission_classes = [AllowAny]
+    authentication_classes = [SupabaseJWTAuthentication]
+
+    def get_permissions(self):
+        # Apenas usuários logados podem criar (POST). Qualquer um pode ver (GET).
+        if self.request.method == 'POST':
+            return [IsAuthenticated()]
+        return [AllowAny()]
 
     def get_queryset(self):
-        return Curso.objects.filter(is_active=True).order_by('-criado_em')
+        return Curso.objects.filter(is_active=True).order_by('-codigo_oficial')
+
+class TurmaCreateView(generics.CreateAPIView):
+    serializer_class = TurmaSerializer
+    authentication_classes = [SupabaseJWTAuthentication]
+    permission_classes = [IsAuthenticated]

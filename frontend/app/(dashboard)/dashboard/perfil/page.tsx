@@ -29,11 +29,11 @@ function formatDate(iso: string | null) {
 
 function SectionTitle({ icon: Icon, title }: { icon: React.ElementType; title: string }) {
   return (
-    <div className="flex items-center gap-2 mb-5 pb-3 border-b border-white/[0.06]">
-      <div className="w-7 h-7 rounded-lg bg-primary/20 border border-primary/20 flex items-center justify-center">
-        <Icon className="w-3.5 h-3.5 text-primary-light" />
+    <div className="flex items-center gap-2 mb-5 pb-3 border-b border-slate-100">
+      <div className="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center">
+        <Icon className="w-4 h-4 text-indigo-600" />
       </div>
-      <h2 className="text-[14px] font-semibold text-zinc-300">{title}</h2>
+      <h2 className="text-[15px] font-bold text-slate-800">{title}</h2>
     </div>
   );
 }
@@ -41,8 +41,8 @@ function SectionTitle({ icon: Icon, title }: { icon: React.ElementType; title: s
 function ReadField({ label, value, mono = false }: { label: string; value?: string | null; mono?: boolean }) {
   return (
     <div className="space-y-1">
-      <p className="text-[11px] font-medium text-zinc-600 uppercase tracking-wider">{label}</p>
-      <p className={cn("text-[14px] text-zinc-200", mono && "font-mono tracking-wide", !value && "text-zinc-600 italic")}>
+      <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">{label}</p>
+      <p className={cn("text-[14px] text-slate-800 font-medium", mono && "font-mono tracking-wide font-bold text-indigo-700", !value && "text-slate-400 italic")}>
         {value || "Não informado"}
       </p>
     </div>
@@ -57,13 +57,13 @@ function EditField({
 }) {
   return (
     <div className="space-y-1.5">
-      <label className="text-[11px] font-medium text-zinc-500 uppercase tracking-wider">{label}</label>
+      <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">{label}</label>
       <input
         type={type}
         value={value}
         placeholder={placeholder}
         onChange={(e) => onChange(mask ? mask(e.target.value) : e.target.value)}
-        className="input-dark w-full"
+        className="input-light w-full"
       />
     </div>
   );
@@ -72,23 +72,23 @@ function EditField({
 function StatusBadge({ active, label }: { active: boolean; label: string }) {
   return (
     <span className={cn(
-      "inline-flex items-center gap-1.5 text-[12px] font-medium px-2.5 py-1 rounded-full",
+      "inline-flex items-center gap-1.5 text-[12px] font-bold px-2.5 py-1 rounded-lg",
       active
-        ? "bg-success/10 text-success border border-success/20"
-        : "bg-red-500/10 text-red-400 border border-red-500/20"
+        ? "bg-emerald-50 text-emerald-600 border border-emerald-200"
+        : "bg-red-50 text-red-600 border border-red-200"
     )}>
-      {active ? <BadgeCheck className="w-3.5 h-3.5" /> : <AlertTriangle className="w-3.5 h-3.5" />}
+      {active ? <BadgeCheck className="w-4 h-4" /> : <AlertTriangle className="w-4 h-4" />}
       {label}
     </span>
   );
 }
 
 const TIPO_COLOR: Record<string, string> = {
-  SERVIDOR_ATIVO: "bg-secondary/10 text-secondary border-secondary/20",
-  CIDADAO:        "bg-zinc-500/10 text-zinc-400 border-zinc-500/20",
-  TERCEIRIZADO:   "bg-amber-500/10 text-amber-400 border-amber-500/20",
-  ESTAGIARIO:     "bg-purple-500/10 text-purple-400 border-purple-500/20",
-  INSTRUTOR:      "bg-primary/10 text-primary-light border-primary/20",
+  SERVIDOR_ATIVO: "bg-slate-100 text-slate-700 border-slate-200",
+  CIDADAO:        "bg-slate-100 text-slate-600 border-slate-200",
+  TERCEIRIZADO:   "bg-amber-50 text-amber-600 border-amber-200",
+  ESTAGIARIO:     "bg-purple-50 text-purple-600 border-purple-200",
+  INSTRUTOR:      "bg-indigo-50 text-indigo-700 border-indigo-200",
 };
 
 // ─── Avatar com Upload ────────────────────────────────────────────────────────
@@ -102,7 +102,6 @@ function AvatarUpload({
   const [preview, setPreview] = useState<string | null>(fotoUrl);
   const [loading, setLoading] = useState(false);
 
-  // Sincroniza preview se a fotoUrl mudar externamente (ex: após refreshProfile)
   useEffect(() => {
     setPreview(fotoUrl);
   }, [fotoUrl]);
@@ -113,7 +112,7 @@ function AvatarUpload({
       return;
     }
     const objectUrl = URL.createObjectURL(file);
-    setPreview(objectUrl); // Preview imediato
+    setPreview(objectUrl);
     setLoading(true);
 
     const formData = new FormData();
@@ -126,13 +125,12 @@ function AvatarUpload({
         isFormData:  true,
         body:        formData,
       });
-      // Ao invés de atualizar só o preview local, notifica o contexto global
       await onUploadSuccess();
       toast.success("Foto atualizada com sucesso em todo o portal!");
     } catch (err: unknown) {
       const apiErr = err as ApiError;
       toast.error(`Falha no upload: ${apiErr.message}`);
-      setPreview(fotoUrl); // Reverte preview em caso de erro
+      setPreview(fotoUrl);
     } finally {
       setLoading(false);
       URL.revokeObjectURL(objectUrl);
@@ -146,23 +144,22 @@ function AvatarUpload({
         onClick={() => inputRef.current?.click()}
         disabled={loading}
         title="Trocar foto de perfil"
-        className="relative w-20 h-20 rounded-2xl overflow-hidden border-2 border-white/[0.08]
-                   hover:border-primary/50 transition-all duration-200 focus:outline-none
-                   focus:ring-2 focus:ring-primary/40"
+        className="relative w-20 h-20 rounded-2xl overflow-hidden border-2 border-white shadow-sm
+                   hover:border-indigo-400 transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-indigo-500/20"
       >
         {preview ? (
           <Image src={preview} alt="Foto de perfil" fill className="object-cover" unoptimized />
         ) : (
-          <div className="w-full h-full bg-primary/20 flex items-center justify-center
-                          text-2xl font-bold text-primary-light">
+          <div className="w-full h-full bg-indigo-100 flex items-center justify-center
+                          text-2xl font-black text-indigo-600">
             {nome.charAt(0).toUpperCase()}
           </div>
         )}
-        <div className="absolute inset-0 bg-black/50 flex items-center justify-center
+        <div className="absolute inset-0 bg-slate-900/40 flex items-center justify-center
                         opacity-0 group-hover:opacity-100 transition-opacity">
           {loading
-            ? <Loader2 className="w-5 h-5 text-white animate-spin" />
-            : <Camera className="w-5 h-5 text-white" />}
+            ? <Loader2 className="w-6 h-6 text-white animate-spin" />
+            : <Camera className="w-6 h-6 text-white" />}
         </div>
       </button>
 
@@ -174,9 +171,8 @@ function AvatarUpload({
         onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
       />
 
-      <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-primary border-2
-                      border-[var(--surface)] flex items-center justify-center pointer-events-none">
-        <Camera className="w-3 h-3 text-white" />
+      <div className="absolute -bottom-2 -right-2 w-8 h-8 rounded-full bg-white shadow-md border border-slate-100 flex items-center justify-center pointer-events-none">
+        <Camera className="w-4 h-4 text-indigo-600" />
       </div>
     </div>
   );
@@ -185,18 +181,15 @@ function AvatarUpload({
 // ─── Página principal ─────────────────────────────────────────────────────────
 
 export default function PerfilPage() {
-  // Usa o contexto compartilhado — sem fetch próprio
   const { profile, isLoading, refreshProfile } = useProfile();
 
   const [isSaving, setIsSaving] = useState(false);
   const [saved,    setSaved]    = useState(false);
 
-  // Campos editáveis locais (inicializados e sincronizados com o contexto)
   const [nomeSocial,  setNomeSocial]  = useState("");
   const [telefone,    setTelefone]    = useState("");
   const [emailChefe,  setEmailChefe]  = useState("");
 
-  // Sincroniza os campos locais quando o perfil carrega ou é atualizado
   useEffect(() => {
     if (profile) {
       setNomeSocial(profile.nome_social  || "");
@@ -218,7 +211,6 @@ export default function PerfilPage() {
           email_chefe:  emailChefe  || null,
         }),
       });
-      // Notifica o contexto para re-fetch e propaga para Sidebar e outros consumidores
       await refreshProfile();
       setSaved(true);
       toast.success("Alterações salvas com sucesso!");
@@ -240,8 +232,8 @@ export default function PerfilPage() {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="flex flex-col items-center gap-3">
-          <Loader2 className="w-8 h-8 text-primary-light animate-spin" />
-          <p className="text-sm text-zinc-500">Carregando perfil...</p>
+          <Loader2 className="w-8 h-8 text-primary animate-spin" />
+          <p className="text-sm font-medium text-slate-500">Carregando perfil...</p>
         </div>
       </div>
     );
@@ -251,15 +243,14 @@ export default function PerfilPage() {
   const nomeExibido = profile.nome_social || profile.nome_completo;
 
   return (
-    <div className="max-w-3xl mx-auto space-y-5">
+    <div className="max-w-3xl mx-auto space-y-6 pb-20">
 
       {/* ── Cabeçalho ──────────────────────────────────────────────── */}
       <motion.div
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="glass-card p-6 flex items-start gap-5"
+        className="clean-card p-6 md:p-8 flex flex-col md:flex-row items-center md:items-start gap-6 text-center md:text-left"
       >
-        {/* Upload de avatar — ao terminar chama refreshProfile() */}
         <AvatarUpload
           nome={nomeExibido}
           fotoUrl={profile.foto_perfil_url}
@@ -267,16 +258,16 @@ export default function PerfilPage() {
         />
 
         <div className="min-w-0 flex-1">
-          <h1 className="text-xl font-bold text-zinc-100 truncate">{nomeExibido}</h1>
+          <h1 className="text-2xl font-extrabold text-slate-800 truncate">{nomeExibido}</h1>
           {profile.nome_social && (
-            <p className="text-[12px] text-zinc-500 mt-0.5">Nome completo: {profile.nome_completo}</p>
+            <p className="text-[13px] font-medium text-slate-500 mt-1">Nome completo: {profile.nome_completo}</p>
           )}
-          <div className="flex flex-wrap items-center gap-2 mt-3">
+          <div className="flex flex-wrap justify-center md:justify-start items-center gap-3 mt-4">
             <span className={cn(
-              "inline-flex items-center gap-1.5 text-[12px] font-medium px-2.5 py-1 rounded-full border",
-              TIPO_COLOR[profile.tipo_usuario] || "bg-zinc-500/10 text-zinc-400 border-zinc-500/20"
+              "inline-flex items-center gap-1.5 text-[12px] font-bold px-3 py-1.5 rounded-lg border",
+              TIPO_COLOR[profile.tipo_usuario] || "bg-slate-50 text-slate-600 border-slate-200"
             )}>
-              <Briefcase className="w-3.5 h-3.5" />
+              <Briefcase className="w-4 h-4" />
               {profile.tipo_usuario_display}
             </span>
             <StatusBadge active={profile.is_active} label={profile.is_active ? "Conta ativa" : "Conta inativa"} />
@@ -284,9 +275,9 @@ export default function PerfilPage() {
               <StatusBadge active={false} label={`Suspenso até ${formatDate(profile.bloqueado_ate)}`} />
             )}
             {profile.esta_de_licenca && (
-              <span className="inline-flex items-center gap-1.5 text-[12px] font-medium px-2.5 py-1 rounded-full
-                               bg-amber-500/10 text-amber-400 border border-amber-500/20">
-                <AlertTriangle className="w-3.5 h-3.5" />Em licença
+              <span className="inline-flex items-center gap-1.5 text-[12px] font-bold px-3 py-1.5 rounded-lg
+                               bg-amber-50 text-amber-600 border border-amber-200">
+                <AlertTriangle className="w-4 h-4" />Em licença
               </span>
             )}
           </div>
@@ -298,10 +289,10 @@ export default function PerfilPage() {
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.05 }}
-        className="glass-card p-6"
+        className="clean-card p-6 md:p-8"
       >
-        <SectionTitle icon={User} title="Identificação" />
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+        <SectionTitle icon={User} title="Identificação Oficial" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
           <ReadField label="Nome completo" value={profile.nome_completo} />
           <ReadField label="CPF"           value={formatCpf(profile.cpf)} mono />
           <ReadField label="E-mail"        value={profile.email} />
@@ -314,10 +305,10 @@ export default function PerfilPage() {
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.10 }}
-        className="glass-card p-6"
+        className="clean-card p-6 md:p-8"
       >
-        <SectionTitle icon={Phone} title="Contato e Dados Pessoais" />
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <SectionTitle icon={Phone} title="Contato e Preferências" />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <EditField
             label="Nome social (como prefere ser chamado)"
             value={nomeSocial}
@@ -337,13 +328,13 @@ export default function PerfilPage() {
       {/* ── Dados funcionais ────────────────────────────────────────── */}
       {profile.tipo_usuario !== "CIDADAO" && (
         <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.15 }}
-          className="glass-card p-6"
+           initial={{ opacity: 0, y: 10 }}
+           animate={{ opacity: 1, y: 0 }}
+           transition={{ delay: 0.15 }}
+           className="clean-card p-6 md:p-8"
         >
-          <SectionTitle icon={Building2} title="Dados Funcionais" />
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+          <SectionTitle icon={Building2} title="Dados Institucionais" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
             {profile.tipo_usuario === "SERVIDOR_ATIVO" && (
               <ReadField label="Matrícula funcional" value={profile.matricula} mono />
             )}
@@ -367,26 +358,26 @@ export default function PerfilPage() {
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.20 }}
-        className="glass-card p-6"
+        className="clean-card p-6 md:p-8"
       >
-        <SectionTitle icon={ShieldCheck} title="Situação na Plataforma" />
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-          <div className="space-y-1">
-            <p className="text-[11px] font-medium text-zinc-600 uppercase tracking-wider">Confirmação de dados</p>
-            <div className="flex items-center gap-2 mt-1">
-              <Calendar className="w-4 h-4 text-zinc-600" />
-              <p className="text-[14px] text-zinc-200">{formatDate(profile.data_ultima_confirmacao)}</p>
+        <SectionTitle icon={ShieldCheck} title="Situação de Compliance" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+          <div className="space-y-1.5 border border-slate-100 rounded-xl p-4 bg-slate-50">
+            <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Confirmação de dados</p>
+            <div className="flex items-center gap-2 mt-2">
+              <Calendar className="w-5 h-5 text-indigo-500" />
+              <p className="text-[14px] font-bold text-slate-700">{formatDate(profile.data_ultima_confirmacao)}</p>
             </div>
-            <p className="text-[11px] text-zinc-600 mt-1">Reconfirmação necessária a cada 90 dias.</p>
+            <p className="text-[11px] text-slate-500 mt-2">É necessário reconfirmar os dados a cada semestre para validade de certificados.</p>
           </div>
-          <div className="space-y-1">
-            <p className="text-[11px] font-medium text-zinc-600 uppercase tracking-wider">Restrições</p>
+          <div className="space-y-1.5 border border-slate-100 rounded-xl p-4 bg-slate-50">
+            <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Restrições na Escola</p>
             {!profile.esta_bloqueado && !profile.esta_de_licenca
-              ? <p className="text-[13px] text-success mt-1">Nenhuma restrição ativa</p>
+               ? <div className="flex items-center gap-2 mt-2"><CheckCircle2 className="w-5 h-5 text-emerald-500"/><p className="text-[14px] font-bold text-slate-700">Tudo limpo, sem bloqueios</p></div>
               : (
-                <div className="space-y-1 mt-1">
-                  {profile.esta_bloqueado  && <p className="text-[13px] text-red-400">• Suspenso até {formatDate(profile.bloqueado_ate)}</p>}
-                  {profile.esta_de_licenca && <p className="text-[13px] text-amber-400">• Em período de licença</p>}
+                <div className="space-y-1 mt-2">
+                  {profile.esta_bloqueado  && <p className="text-[13px] font-bold text-red-500">• Suspenso até {formatDate(profile.bloqueado_ate)}</p>}
+                  {profile.esta_de_licenca && <p className="text-[13px] font-bold text-amber-500">• Em período de licença</p>}
                 </div>
               )}
           </div>
@@ -400,23 +391,23 @@ export default function PerfilPage() {
             initial={{ opacity: 0, y: 24 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 24 }}
-            className="sticky bottom-4 z-10"
+            className="fixed bottom-6 right-6 lg:right-12 z-40"
           >
-            <div className="glass-card p-3 flex items-center justify-between gap-3">
-              <p className="text-[13px] text-zinc-400 pl-1">Alterações não salvas.</p>
+            <div className="bg-white shadow-xl shadow-indigo-900/10 border border-slate-200 rounded-2xl p-4 flex items-center justify-between gap-6">
+              <p className="text-sm font-bold text-slate-600 pl-2">Você tem alterações não salvas.</p>
               <button
                 onClick={handleSalvar}
                 disabled={isSaving}
                 className={cn(
-                  "btn-primary !py-2 !px-5 flex items-center gap-2",
-                  saved && "!bg-success !border-success"
+                  "btn-primary !px-6 flex items-center gap-2 shadow-lg",
+                  saved && "!bg-success"
                 )}
               >
                 {isSaving
-                  ? <Loader2 className="w-4 h-4 animate-spin" />
+                  ? <Loader2 className="w-5 h-5 animate-spin" />
                   : saved
-                    ? <><CheckCircle2 className="w-4 h-4" /> Salvo!</>
-                    : <><Save className="w-4 h-4" /> Salvar Alterações</>}
+                    ? <><CheckCircle2 className="w-5 h-5" /> Salvo!</>
+                    : <><Save className="w-5 h-5" /> Salvar Tudo</>}
               </button>
             </div>
           </motion.div>
@@ -428,10 +419,10 @@ export default function PerfilPage() {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 0.25 }}
-        className="flex items-center gap-2 px-4 py-3 rounded-xl bg-white/[0.02] border border-white/[0.04]"
+        className="flex items-center gap-2 px-5 py-4 rounded-xl bg-slate-100 border border-slate-200 justify-center"
       >
-        <ClipboardList className="w-3.5 h-3.5 text-zinc-700 flex-shrink-0" />
-        <p className="text-[11px] text-zinc-700 font-mono truncate">ID: {profile.id}</p>
+        <ClipboardList className="w-4 h-4 text-slate-400 flex-shrink-0" />
+        <p className="text-[12px] text-slate-500 font-mono font-bold truncate">Registro Único Institucional: {profile.id}</p>
       </motion.div>
 
     </div>

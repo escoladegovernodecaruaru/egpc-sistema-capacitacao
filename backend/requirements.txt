@@ -7,4 +7,5 @@ python-jose[cryptography]
 requests
 psycopg2-binary
 boto3
-django-storages
+django-storages
+Pillow

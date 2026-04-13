@@ -1,40 +1,43 @@
-"""
-cursos/serializers.py
-─────────────────────
-Serialização do Módulo de Cursos para a API pública.
-
-  TurmaSerializer  — dados essenciais de uma turma (sem dados financeiros)
-  CursoSerializer  — dados do curso com turmas aninhadas e status geral
-"""
-
 from rest_framework import serializers
-from .models import Curso, Turma
+from .models import Curso, Turma, EventoTurma
+
+class EventoTurmaSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EventoTurma
+        fields = ['id', 'data', 'hora_inicio', 'hora_fim', 'espaco', 'espaco_externo_nome']
 
 class TurmaSerializer(serializers.ModelSerializer):
     instrutor_nome = serializers.CharField(source='instrutor.nome_completo', read_only=True)
-    
+    codigo = serializers.CharField(source='codigo_turma', read_only=True)
+    status = serializers.CharField(source='status_calculado', read_only=True)
+    eventos = EventoTurmaSerializer(many=True, required=False)
+
     class Meta:
         model = Turma
         fields = [
-            'id', 'codigo', 'modalidade', 'data_inicio', 'data_fim', 
-            'hora_inicio', 'hora_fim', 'vagas_totais', 'vagas_disponiveis', 
-            'instrutor_nome', 'status'
+            'id', 'curso', 'codigo', 'letra', 'modalidade', 'data_inicio', 'data_fim', 
+            'carga_horaria', 'vagas', 'custo', 'instrutor', 'instrutor_nome', 'status', 'eventos'
         ]
 
-# 2. Atualize o Serializer do Curso para puxar as turmas ativas
+    def create(self, validated_data):
+        eventos_data = validated_data.pop('eventos', [])
+        turma = Turma.objects.create(**validated_data)
+        
+        for evento_data in eventos_data:
+            EventoTurma.objects.create(turma=turma, **evento_data)
+            
+        return turma
+
 class CursoSerializer(serializers.ModelSerializer):
-    categoria_nome = serializers.CharField(source='categoria.nome', read_only=True)
-    # Traz apenas as turmas que não estão canceladas ou finalizadas
     turmas = serializers.SerializerMethodField()
 
     class Meta:
         model = Curso
         fields = [
-            'id', 'titulo', 'slug', 'descricao', 'carga_horaria', 
-            'eixo_tematico', 'categoria', 'categoria_nome', 'status_geral', 'turmas'
+            'id', 'codigo_oficial', 'titulo', 'ementa', 'tipo', 'eixo', 'num_processo', 'memorando', 'status_geral', 'turmas'
         ]
         
     def get_turmas(self, obj):
-        # Filtra turmas que ainda estão para começar ou em andamento e com vagas
-        turmas_ativas = obj.turmas.exclude(status__in=['CONCLUIDA', 'CANCELADA', 'ADIADA'])
+        # Retorna apenas as turmas que estão ativas no sistema
+        turmas_ativas = obj.turmas.filter(is_active=True)
         return TurmaSerializer(turmas_ativas, many=True).data

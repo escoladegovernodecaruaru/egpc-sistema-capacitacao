@@ -1,31 +1,37 @@
-// frontend/types/cursos.ts
-
 export type StatusTurma = "PREVISTA" | "EM_ANDAMENTO" | "CONCLUIDA" | "ADIADA" | "CANCELADA" | "SEM_TURMAS";
-export type ModalidadeTurma = "PRESENCIAL" | "EAD" | "HIBRIDO";
+export type TurnoTurma = "MANHA" | "TARDE" | "NOITE";
+
+export interface EventoTurma {
+  id: number;
+  data: string;
+  hora_inicio: string;
+  hora_fim: string;
+  espaco: string;
+  espaco_externo_nome: string;
+}
 
 export interface Turma {
   id: number;
   codigo: string;
-  modalidade: ModalidadeTurma;
+  letra: string;
+  local: string;
+  turno: TurnoTurma;
   data_inicio: string | null;
   data_fim: string | null;
-  hora_inicio: string | null;
-  hora_fim: string | null;
-  vagas_totais: number;
-  vagas_disponiveis: number;
+  carga_horaria: number;
+  vagas: number;
   instrutor_nome: string | null;
   status: StatusTurma;
+  modalidade: string;
+  eventos: EventoTurma[];
 }
 
 export interface Curso {
   id: number;
+  codigo_oficial: string;
   titulo: string;
-  slug: string;
-  descricao: string;
-  carga_horaria: number;
-  eixo_tematico: string;
-  categoria: number;
-  categoria_nome?: string;
+  ementa: string;
+  tipo: "CENTRALIZADO" | "DESCENTRALIZADO";
   status_geral: StatusTurma;
   turmas?: Turma[];
 }

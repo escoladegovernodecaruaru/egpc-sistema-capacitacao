@@ -10,7 +10,7 @@ export default function DashboardPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-[50vh]">
-        <Loader2 className="w-8 h-8 animate-spin text-primary-light" />
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
       </div>
     );
   }
@@ -27,17 +27,17 @@ export default function DashboardPage() {
   const isAdmin = profile.is_staff;
 
   return (
-    <div className="space-y-8 animate-[fade-in_0.4s_ease-out]">
+    <div className="space-y-8 animate-[fade-in_0.4s_ease-out] text-slate-800">
       
       {/* ── HEADER DE BOAS-VINDAS ── */}
-      <section className="glass-card p-8 relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-primary/10 rounded-full blur-[80px] -translate-y-1/2 translate-x-1/3" />
+      <section className="clean-card bg-indigo-600 border-indigo-700 p-8 md:p-10 relative overflow-hidden text-white shadow-lg">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500 rounded-full blur-[60px] opacity-60 -translate-y-1/2 translate-x-1/3 pointer-events-none" />
         
         <div className="relative z-10">
-          <h1 className="text-3xl font-bold text-slate-100 tracking-tight">
-            {saudacao}, <span className="text-primary-light">{primeiroNome}</span>! 👋
+          <h1 className="text-3xl font-extrabold tracking-tight">
+            {saudacao}, <span className="text-indigo-200">{primeiroNome}</span>! 👋
           </h1>
-          <p className="text-slate-400 mt-2 text-[15px] max-w-xl">
+          <p className="text-indigo-100 mt-2 text-[16px] max-w-xl font-medium">
             {isAdmin 
               ? "Bem-vindo ao painel de controle da Escola de Governo. Aqui está o resumo das operações de hoje."
               : "Pronto para continuar sua jornada de aprendizado? Acompanhe seus cursos e certificados por aqui."}
@@ -46,70 +46,72 @@ export default function DashboardPage() {
       </section>
 
       {/* ── MÓDULOS (CARDS) ── */}
-      <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+      <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         
         {/* Bloco 1: Jornada */}
-        <div className="glass-card p-6 flex flex-col hover:border-white/20 transition-colors">
-          <div className="w-12 h-12 rounded-xl bg-blue-500/10 flex items-center justify-center mb-4 border border-blue-500/20">
-            <GraduationCap className="w-6 h-6 text-blue-400" />
+        <div className="clean-card p-6 flex flex-col hover:border-indigo-200 hover:shadow-md transition-all group">
+          <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center mb-5 border border-blue-100 group-hover:bg-blue-100 transition-colors">
+            <GraduationCap className="w-6 h-6 text-blue-600" />
           </div>
-          <h2 className="text-lg font-semibold text-slate-100">Minha Jornada</h2>
-          <p className="text-sm text-slate-500 mt-1 flex-1">Você ainda não está matriculado em nenhum curso.</p>
+          <h2 className="text-lg font-bold text-slate-800">Minha Jornada</h2>
+          <p className="text-sm text-slate-500 mt-1.5 flex-1 leading-relaxed">Você ainda não está matriculado em nenhum curso.</p>
           
-          <Link href="/dashboard/cursos" className="mt-6 flex items-center gap-2 text-sm font-medium text-blue-400 hover:text-blue-300 transition-colors group">
-            Explorar Catálogo <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+          <Link href="/dashboard/cursos" className="mt-6 flex items-center gap-2 text-sm font-bold text-blue-600 hover:text-blue-500 transition-colors group/link w-fit">
+            Explorar Catálogo <ArrowRight className="w-4 h-4 group-hover/link:translate-x-1 transition-transform" />
           </Link>
         </div>
 
         {/* Bloco 2: Certificados */}
-        <div className="glass-card p-6 flex flex-col hover:border-white/20 transition-colors">
-          <div className="w-12 h-12 rounded-xl bg-emerald-500/10 flex items-center justify-center mb-4 border border-emerald-500/20">
-            <Award className="w-6 h-6 text-emerald-400" />
+        <div className="clean-card p-6 flex flex-col hover:border-emerald-200 hover:shadow-md transition-all group">
+          <div className="w-12 h-12 rounded-xl bg-emerald-50 flex items-center justify-center mb-5 border border-emerald-100 group-hover:bg-emerald-100 transition-colors">
+            <Award className="w-6 h-6 text-emerald-600" />
           </div>
-          <h2 className="text-lg font-semibold text-slate-100">Meus Certificados</h2>
-          <p className="text-sm text-slate-500 mt-1 flex-1">Visualize e baixe os certificados dos cursos concluídos.</p>
+          <h2 className="text-lg font-bold text-slate-800">Meus Certificados</h2>
+          <p className="text-sm text-slate-500 mt-1.5 flex-1 leading-relaxed">Visualize e baixe os certificados dos cursos concluídos.</p>
           
-          <button disabled className="mt-6 flex items-center gap-2 text-sm font-medium text-slate-600 cursor-not-allowed">
+          <button disabled className="mt-6 flex items-center gap-2 text-sm font-semibold text-slate-400 cursor-not-allowed">
             Nenhum certificado emitido
           </button>
         </div>
 
         {/* Bloco 3: Catálogo */}
-        <div className="glass-card p-6 flex flex-col hover:border-white/20 transition-colors">
-          <div className="w-12 h-12 rounded-xl bg-cyan-500/10 flex items-center justify-center mb-4 border border-cyan-500/20">
-            <BookOpen className="w-6 h-6 text-cyan-400" />
+        <div className="clean-card p-6 flex flex-col hover:border-cyan-200 hover:shadow-md transition-all group">
+          <div className="w-12 h-12 rounded-xl bg-cyan-50 flex items-center justify-center mb-5 border border-cyan-100 group-hover:bg-cyan-100 transition-colors">
+            <BookOpen className="w-6 h-6 text-cyan-600" />
           </div>
-          <h2 className="text-lg font-semibold text-slate-100">Inscrições Abertas</h2>
-          <p className="text-sm text-slate-500 mt-1 flex-1">Descubra novas oportunidades de capacitação profissional.</p>
+          <h2 className="text-lg font-bold text-slate-800">Inscrições Abertas</h2>
+          <p className="text-sm text-slate-500 mt-1.5 flex-1 leading-relaxed">Descubra novas oportunidades de capacitação profissional.</p>
           
-          <Link href="/dashboard/cursos" className="mt-6 flex items-center gap-2 text-sm font-medium text-cyan-400 hover:text-cyan-300 transition-colors group">
-            Ver turmas abertas <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+          <Link href="/dashboard/cursos" className="mt-6 flex items-center gap-2 text-sm font-bold text-cyan-600 hover:text-cyan-500 transition-colors group/link w-fit">
+            Ver turmas abertas <ArrowRight className="w-4 h-4 group-hover/link:translate-x-1 transition-transform" />
           </Link>
         </div>
 
         {/* Bloco ADMIN (Mostra apenas se is_staff for true) */}
         {isAdmin && (
-          <div className="glass-card p-6 flex flex-col md:col-span-2 lg:col-span-3 bg-primary/5 border-primary/20">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-lg bg-primary/20 flex items-center justify-center border border-primary/30">
-                <TrendingUp className="w-5 h-5 text-primary-light" />
+          <div className="clean-card p-6 md:p-8 flex flex-col md:col-span-2 lg:col-span-3 bg-slate-50 border-slate-200 shadow-none">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-xl bg-indigo-100 flex items-center justify-center border border-indigo-200">
+                  <TrendingUp className="w-6 h-6 text-indigo-600" />
+                </div>
+                <h2 className="text-xl font-extrabold text-slate-800 tracking-tight">Visão Geral da Gestão</h2>
               </div>
-              <h2 className="text-lg font-semibold text-slate-100">Visão Geral da Gestão</h2>
-              <span className="px-2.5 py-1 rounded-md bg-primary text-[10px] font-bold text-white uppercase tracking-wider ml-auto">Administrador</span>
+              <span className="px-3 py-1.5 rounded-lg bg-indigo-600 text-xs font-bold text-white uppercase tracking-wider w-fit shadow-md shadow-indigo-600/20">Administrador</span>
             </div>
             
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-2">
-              <div className="p-4 rounded-xl bg-white/5 border border-white/10">
-                <p className="text-sm text-slate-400 font-medium">Turmas Ativas</p>
-                <p className="text-2xl font-bold text-slate-100 mt-1">--</p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 mt-2">
+              <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm flex flex-col">
+                <p className="text-[13px] text-slate-500 font-bold uppercase tracking-wider">Turmas Ativas</p>
+                <p className="text-3xl font-black text-slate-800 mt-2">--</p>
               </div>
-              <div className="p-4 rounded-xl bg-white/5 border border-white/10">
-                <p className="text-sm text-slate-400 font-medium">Aprovações Pendentes</p>
-                <p className="text-2xl font-bold text-amber-400 mt-1">--</p>
+              <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm flex flex-col">
+                <p className="text-[13px] text-slate-500 font-bold uppercase tracking-wider">Aprovações Pendentes</p>
+                <p className="text-3xl font-black text-amber-500 mt-2">--</p>
               </div>
-              <div className="p-4 rounded-xl bg-white/5 border border-white/10">
-                <p className="text-sm text-slate-400 font-medium">Novos Usuários (Hoje)</p>
-                <p className="text-2xl font-bold text-success-light mt-1">--</p>
+              <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm flex flex-col">
+                <p className="text-[13px] text-slate-500 font-bold uppercase tracking-wider">Novos Usuários (Hoje)</p>
+                <p className="text-3xl font-black text-emerald-500 mt-2">--</p>
               </div>
             </div>
           </div>

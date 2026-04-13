@@ -1,150 +1,69 @@
 "use client";
 
-import { useState } from "react";
 import Image from "next/image";
 import { Curso } from "@/types/cursos";
-import { 
-  Clock, MapPin, MonitorPlay, Users, 
-  CalendarDays, ChevronDown, CheckCircle2 
-} from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
-import { cn } from "@/lib/utils";
+import { Clock, MonitorPlay, ArrowRight } from "lucide-react";
 
 interface CursoCardProps {
   curso: Curso;
   imagemUrl: string | null;
+  onSelecionar: (curso: Curso) => void;
 }
 
-export default function CursoCard({ curso, imagemUrl }: CursoCardProps) {
-  const [isExpanded, setIsExpanded] = useState(false);
+export default function CursoCard({ curso, imagemUrl, onSelecionar }: CursoCardProps) {
   const temTurmas = curso.turmas && curso.turmas.length > 0;
-
-  const formatDate = (dateStr: string | null) => {
-    if (!dateStr) return "--";
-    const [ano, mes, dia] = dateStr.split('-');
-    return `${dia}/${mes}`;
-  };
+  
+  const cargaHorariaBase = temTurmas ? curso.turmas![0].carga_horaria : 0;
 
   return (
-    <div className="glass-card flex flex-col overflow-hidden transition-all duration-300 hover:border-white/10 group">
+    <div className="clean-card flex flex-col overflow-hidden transition-all duration-300 hover:border-indigo-300 hover:shadow-md group h-full cursor-pointer" onClick={() => onSelecionar(curso)}>
       
       {/* ── Capa do Curso ── */}
-      <div className="relative h-40 bg-slate-800/50 w-full flex-shrink-0 border-b border-white/5">
+      <div className="relative h-44 bg-slate-100 w-full flex-shrink-0 border-b border-slate-200">
         {imagemUrl ? (
-          <Image src={imagemUrl} alt={curso.titulo} fill className="object-cover opacity-80 group-hover:opacity-100 transition-opacity" unoptimized />
+          <Image src={imagemUrl} alt={curso.titulo} fill className="object-cover opacity-90 group-hover:opacity-100 transition-transform duration-500 group-hover:scale-105" unoptimized />
         ) : (
-          <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-600 bg-gradient-to-br from-[#0f172a] to-[#020617]">
-            <MonitorPlay className="w-8 h-8 opacity-50 mb-2" />
-            <span className="text-[10px] font-bold uppercase tracking-widest opacity-50">EGPC</span>
+          <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400 bg-gradient-to-br from-slate-100 to-slate-200 group-hover:bg-slate-200 transition-colors">
+            <MonitorPlay className="w-10 h-10 opacity-40 mb-2 text-indigo-500 group-hover:scale-110 transition-transform" />
+            <span className="text-[12px] font-black uppercase tracking-widest opacity-50 text-indigo-900">{curso.codigo_oficial || "EGPC"}</span>
           </div>
         )}
         
-        {/* Badge Categoria */}
-        <div className="absolute top-3 left-3 px-2.5 py-1 rounded-md bg-black/60 backdrop-blur-md border border-white/10 text-[10px] font-bold text-slate-200 uppercase tracking-wider">
-          {curso.categoria_nome || "Geral"}
+        {/* Badge Tipo do Curso */}
+        <div className="absolute top-4 left-4 px-3 py-1.5 rounded-lg bg-white/90 backdrop-blur-md shadow-sm border border-slate-200 text-[10px] font-black text-slate-700 uppercase tracking-wider">
+          {curso.tipo === "CENTRALIZADO" ? "Centralizado" : "Descentralizado"}
         </div>
       </div>
 
       {/* ── Informações Básicas ── */}
-      <div className="p-5 flex-1 flex flex-col">
-        <h3 className="text-[16px] font-bold text-slate-100 leading-snug line-clamp-2" title={curso.titulo}>
+      <div className="p-6 flex-1 flex flex-col bg-white">
+        <h3 className="text-[17px] font-extrabold text-slate-800 leading-snug line-clamp-2" title={curso.titulo}>
           {curso.titulo}
         </h3>
         
-        <p className="text-[13px] text-slate-400 mt-2 line-clamp-2 flex-1">
-          {curso.descricao || "Nenhuma descrição informada para este curso."}
+        <p className="text-[14px] font-medium text-slate-500 mt-2 line-clamp-2 flex-1 leading-relaxed">
+          {curso.ementa || "Nenhuma ementa informada para a grade deste curso."}
         </p>
 
-        <div className="flex items-center gap-4 mt-4 pt-4 border-t border-white/5">
-          <div className="flex items-center gap-1.5 text-slate-400">
-            <Clock className="w-4 h-4" />
-            <span className="text-[12px] font-medium">{curso.carga_horaria}h</span>
+        <div className="flex items-center justify-between mt-5 pt-5 border-t border-slate-100">
+          <div className="flex items-center gap-2 text-slate-500">
+            <Clock className="w-4 h-4 text-indigo-400" />
+            <span className="text-[13px] font-bold text-slate-700">{cargaHorariaBase > 0 ? `${cargaHorariaBase}h` : "--"}</span>
           </div>
+
+          <span className={`text-[12px] font-black uppercase tracking-wider px-2 py-1 rounded-md ${temTurmas ? "bg-emerald-50 text-emerald-600" : "bg-slate-100 text-slate-400"}`}>
+             {temTurmas ? `${curso.turmas?.length} Turma(s)` : "Esgotado"}
+          </span>
         </div>
       </div>
 
-      {/* ── Botão Expansor ── */}
-      <button 
-        onClick={() => setIsExpanded(!isExpanded)}
-        disabled={!temTurmas}
-        className={cn(
-          "w-full p-4 border-t flex items-center justify-between transition-colors",
-          isExpanded ? "bg-white/5 border-white/10" : "bg-transparent border-white/5",
-          temTurmas ? "hover:bg-white/5 cursor-pointer" : "cursor-not-allowed opacity-50"
-        )}
-      >
-        <span className="text-[13px] font-semibold text-slate-300">
-          {temTurmas ? `${curso.turmas?.length} Turma(s) Aberta(s)` : "Sem turmas no momento"}
+      {/* ── Botão Rodapé Inteiro ── */}
+      <div className="w-full p-4 flex items-center justify-center transition-colors bg-slate-50 border-t border-slate-200 group-hover:bg-indigo-50 group-hover:border-indigo-200 text-indigo-600">
+        <span className="text-[14px] font-bold flex items-center gap-2">
+          Ver Detalhes <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
         </span>
-        {temTurmas && (
-          <ChevronDown className={cn("w-4 h-4 text-slate-400 transition-transform duration-300", isExpanded && "rotate-180")} />
-        )}
-      </button>
+      </div>
 
-      {/* ── Lista de Turmas (Acordeão) ── */}
-      <AnimatePresence>
-        {isExpanded && temTurmas && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            className="overflow-hidden bg-[#09090b] border-t border-white/5"
-          >
-            <div className="p-3 space-y-3">
-              {curso.turmas?.map((turma) => (
-                <div key={turma.id} className="p-3 rounded-xl border border-white/10 bg-white/[0.02] hover:bg-white/[0.04] transition-colors">
-                  
-                  <div className="flex justify-between items-start mb-2">
-                    <span className="text-[12px] font-bold text-slate-200">Turma {turma.codigo}</span>
-                    <span className={cn(
-                      "text-[10px] font-bold px-2 py-0.5 rounded uppercase",
-                      turma.modalidade === "EAD" ? "bg-blue-500/20 text-blue-400" : 
-                      turma.modalidade === "HIBRIDO" ? "bg-purple-500/20 text-purple-400" : "bg-emerald-500/20 text-emerald-400"
-                    )}>
-                      {turma.modalidade}
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2 mb-4">
-                    <div className="flex items-center gap-1.5 text-slate-400">
-                      <CalendarDays className="w-3.5 h-3.5" />
-                      <span className="text-[11px]">{formatDate(turma.data_inicio)} até {formatDate(turma.data_fim)}</span>
-                    </div>
-                    <div className="flex items-center gap-1.5 text-slate-400">
-                      <Clock className="w-3.5 h-3.5" />
-                      <span className="text-[11px]">{turma.hora_inicio?.slice(0,5) || '--'} às {turma.hora_fim?.slice(0,5) || '--'}</span>
-                    </div>
-                  </div>
-
-                  {/* Barra de Vagas */}
-                  <div className="mb-4">
-                    <div className="flex justify-between text-[11px] mb-1">
-                      <span className="text-slate-400">Vagas disponíveis</span>
-                      <span className={cn("font-bold", turma.vagas_disponiveis < 5 ? "text-red-400" : "text-emerald-400")}>
-                        {turma.vagas_disponiveis} / {turma.vagas_totais}
-                      </span>
-                    </div>
-                    <div className="h-1.5 w-full bg-white/10 rounded-full overflow-hidden">
-                      <div 
-                        className={cn("h-full rounded-full transition-all duration-500", turma.vagas_disponiveis < 5 ? "bg-red-500" : "bg-emerald-500")} 
-                        style={{ width: `${(turma.vagas_disponiveis / turma.vagas_totais) * 100}%` }}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Botão de Matrícula (Visual por enquanto) */}
-                  <button 
-                    disabled={turma.vagas_disponiveis === 0}
-                    className="w-full py-2 rounded-lg text-[13px] font-semibold bg-primary hover:bg-primary-light text-white disabled:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed transition-colors"
-                  >
-                    {turma.vagas_disponiveis === 0 ? "Turma Lotada" : "Solicitar Matrícula"}
-                  </button>
-                </div>
-              ))}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   );
 }
