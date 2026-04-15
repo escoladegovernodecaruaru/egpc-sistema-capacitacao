@@ -15,11 +15,12 @@ import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 
 const NAV = [
-  { label: "Painel",     href: "/dashboard",          icon: LayoutDashboard, roles: ["*"] },
-  { label: "Catálogo",   href: "/dashboard/cursos",   icon: BookOpen,        roles: ["*"] },
-  { label: "Meu Perfil", href: "/dashboard/perfil",   icon: UserCircle,      roles: ["*"] },
-  { label: "Gestão",     href: "/dashboard/gestao",   icon: FolderKanban,    roles: ["ADMIN", "INSTRUTOR"] },
-  { label: "Usuários",   href: "/dashboard/usuarios", icon: Users,           roles: ["ADMIN"] },
+  { label: "Painel",       href: "/dashboard",          icon: LayoutDashboard, roles: ["*"] },
+  { label: "Catálogo",     href: "/dashboard/cursos",   icon: BookOpen,        roles: ["*"] },
+  { label: "Meu Perfil",   href: "/dashboard/perfil",   icon: UserCircle,      roles: ["*"] },
+  { label: "Minha Equipe", href: "/dashboard/equipe",   icon: Users,           roles: ["*"] },
+  { label: "Gestão",       href: "/dashboard/gestao",   icon: FolderKanban,    roles: ["ADMIN", "INSTRUTOR"] },
+  { label: "Usuários",     href: "/dashboard/usuarios", icon: Users,           roles: ["ADMIN"] },
 ];
 
 const TIPO_DOT: Record<string, string> = {
@@ -40,8 +41,8 @@ function ProfileAvatar({ nome, fotoUrl, size = 8 }: { nome: string; fotoUrl: str
     );
   }
   return (
-    <div className={`w-${size} h-${size} rounded-full bg-slate-800 text-slate-300
-                     flex items-center justify-center text-[12px] font-bold uppercase flex-shrink-0 border border-white/5`}
+    <div className={`w-${size} h-${size} rounded-full bg-slate-100 text-slate-600
+                     flex items-center justify-center text-[12px] font-bold uppercase flex-shrink-0 border border-slate-200`}
          style={{ width: px, height: px }}>
       {nome.charAt(0)}
     </div>
@@ -90,13 +91,13 @@ const filtered = NAV.filter((item) => {
         className={cn(
           "flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] font-medium transition-all duration-150 group",
           active
-            ? "bg-white/[0.08] text-white"
-            : "text-slate-400 hover:text-slate-200 hover:bg-white/[0.04]"
+            ? "bg-primary/10 text-primary"
+            : "text-slate-600 hover:text-slate-900 hover:bg-slate-50"
         )}
       >
         <item.icon className={cn(
           "w-4 h-4 flex-shrink-0 transition-colors",
-          active ? "text-white" : "text-slate-500 group-hover:text-slate-400"
+          active ? "text-primary" : "text-slate-400 group-hover:text-slate-600"
         )} />
         {item.label}
       </Link>
@@ -107,11 +108,11 @@ const filtered = NAV.filter((item) => {
     <div className="h-full flex flex-col pt-4">
       {/* Logo Area */}
       <div className="px-6 mb-6 flex items-center gap-3 flex-shrink-0">
-        <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center">
+        <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center shadow-sm">
           <BookOpen className="w-4 h-4 text-white" />
         </div>
         <div>
-          <p className="text-[14px] font-bold text-slate-100 tracking-tight leading-none mb-1">Portal EGPC</p>
+          <p className="text-[14px] font-bold text-slate-900 tracking-tight leading-none mb-1">Portal EGPC</p>
           <p className="text-[10px] text-slate-500 font-medium tracking-wide">ESCOLA DE GOVERNO</p>
         </div>
       </div>
@@ -126,10 +127,10 @@ const filtered = NAV.filter((item) => {
       <div className="p-3 flex-shrink-0">
         {isLoading && (
           <div className="flex items-center gap-3 p-2">
-            <div className="w-8 h-8 rounded-full bg-white/5 animate-pulse" />
+            <div className="w-8 h-8 rounded-full bg-slate-100 animate-pulse" />
             <div className="space-y-2 flex-1">
-              <div className="h-2.5 bg-white/5 rounded w-20 animate-pulse" />
-              <div className="h-2 bg-white/5 rounded w-12 animate-pulse" />
+              <div className="h-2.5 bg-slate-100 rounded w-20 animate-pulse" />
+              <div className="h-2 bg-slate-100 rounded w-12 animate-pulse" />
             </div>
           </div>
         )}
@@ -139,20 +140,20 @@ const filtered = NAV.filter((item) => {
             <Link
               href="/dashboard/perfil"
               onClick={() => setOpen(false)}
-              className="flex items-center gap-3 p-2 rounded-lg hover:bg-white/5 transition-colors group cursor-pointer"
+              className="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-50 transition-colors group cursor-pointer"
             >
               <div className="relative">
                 <ProfileAvatar nome={nomeExibido ?? "?"} fotoUrl={profile.foto_perfil_url} size={8} />
                 <div className={cn(
-                  "absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-[var(--surface)]",
+                  "absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-white",
                   TIPO_DOT[profile.tipo_usuario] || "bg-slate-500"
                 )} />
               </div>
               <div className="min-w-0 flex-1">
-                <p className="text-[13px] font-medium text-slate-200 truncate group-hover:text-white">{nomeExibido}</p>
+                <p className="text-[13px] font-medium text-slate-900 truncate group-hover:text-primary">{nomeExibido}</p>
                 <p className="text-[10px] text-slate-500 truncate mt-0.5">{profile.tipo_usuario_display}</p>
               </div>
-              <ChevronsUpDown className="w-3.5 h-3.5 text-slate-600 group-hover:text-slate-400" />
+              <ChevronsUpDown className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600" />
             </Link>
 
             <button
@@ -170,21 +171,21 @@ const filtered = NAV.filter((item) => {
 
   return (
     <>
-      <button onClick={() => setOpen(true)} className="md:hidden fixed top-4 left-4 z-50 w-10 h-10 rounded-xl glass-card flex items-center justify-center text-slate-400">
+      <button onClick={() => setOpen(true)} className="md:hidden fixed top-4 left-4 z-50 w-10 h-10 rounded-xl clean-card flex items-center justify-center text-slate-600">
         <Menu className="w-5 h-5" />
       </button>
 
       {/* Background mais escuro apenas na sidebar para destacar o conteúdo */}
-      <aside className="hidden md:block w-[240px] flex-shrink-0 bg-[#09090b] border-r border-white/5">
+      <aside className="hidden md:block w-[240px] flex-shrink-0 bg-white border-r border-slate-200">
         <SidebarContent />
       </aside>
 
       <AnimatePresence>
         {open && (
           <>
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="md:hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-40" onClick={() => setOpen(false)} />
-            <motion.aside initial={{ x: "-100%" }} animate={{ x: 0 }} exit={{ x: "-100%" }} transition={{ type: "spring", stiffness: 320, damping: 30 }} className="md:hidden fixed top-0 left-0 h-full w-[240px] z-50 bg-[#09090b] border-r border-white/5">
-              <button onClick={() => setOpen(false)} className="absolute top-4 right-3 w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-white/5"><X className="w-5 h-5" /></button>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="md:hidden fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40" onClick={() => setOpen(false)} />
+            <motion.aside initial={{ x: "-100%" }} animate={{ x: 0 }} exit={{ x: "-100%" }} transition={{ type: "spring", stiffness: 320, damping: 30 }} className="md:hidden fixed top-0 left-0 h-full w-[240px] z-50 bg-white border-r border-slate-200">
+              <button onClick={() => setOpen(false)} className="absolute top-4 right-3 w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100"><X className="w-5 h-5" /></button>
               <SidebarContent />
             </motion.aside>
           </>

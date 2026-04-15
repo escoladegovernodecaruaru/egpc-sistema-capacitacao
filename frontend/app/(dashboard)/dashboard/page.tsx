@@ -1,11 +1,64 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useProfile } from "@/contexts/ProfileContext";
 import { BookOpen, GraduationCap, Award, TrendingUp, ArrowRight, Loader2 } from "lucide-react";
 import Link from "next/link";
+import { fetchApi } from "@/lib/api";
+
+interface InscricaoDetalhe {
+  id: number;
+  status: string;
+  data_inscricao: string;
+  titulo_curso: string;
+  codigo_turma: string;
+  data_inicio: string;
+  data_termino: string;
+  modalidade: string;
+  carga_horaria: number;
+}
+
+const getBadgeProps = (status: string) => {
+  switch (status) {
+    case 'pendente': return { label: 'Pendente', className: 'bg-amber-100 text-amber-800 border-amber-200' };
+    case 'aprovado_chefia': return { label: 'Aprov. Chefia', className: 'bg-amber-100 text-amber-800 border-amber-200' };
+    case 'inscrito': return { label: 'Inscrito', className: 'bg-emerald-100 text-emerald-800 border-emerald-200' };
+    case 'concluido': return { label: 'Concluído', className: 'bg-emerald-100 text-emerald-800 border-emerald-200' };
+    case 'cancelado': return { label: 'Cancelado', className: 'bg-red-100 text-red-800 border-red-200' };
+    default: return { label: status, className: 'bg-slate-100 text-slate-800 border-slate-200' };
+  }
+};
+
+const formatData = (d: string) => {
+  if (!d) return '';
+  const [y, m, day] = d.split('-');
+  return `${day}/${m}/${y.slice(2)}`;
+};
 
 export default function DashboardPage() {
   const { profile, isLoading } = useProfile();
+  
+  const [inscricoes, setInscricoes] = useState<InscricaoDetalhe[]>([]);
+  const [loadingJornada, setLoadingJornada] = useState(true);
+
+  useEffect(() => {
+    if (!profile) return;
+    
+    async function loadMinhasInscricoes() {
+      try {
+        const res = await fetchApi<any>('/cursos/minhas-inscricoes/detalhes/');
+        // O DRF generics.ListAPIView geralmente retorna uma lista direto ou paginado ({ results: [] })
+        const data = Array.isArray(res) ? res : res?.results || [];
+        setInscricoes(data);
+      } catch (err) {
+        console.error("Erro ao carregar jornada:", err);
+      } finally {
+        setLoadingJornada(false);
+      }
+    }
+    
+    loadMinhasInscricoes();
+  }, [profile]);
 
   if (isLoading) {
     return (
@@ -30,14 +83,14 @@ export default function DashboardPage() {
     <div className="space-y-8 animate-[fade-in_0.4s_ease-out] text-slate-800">
       
       {/* ── HEADER DE BOAS-VINDAS ── */}
-      <section className="clean-card bg-indigo-600 border-indigo-700 p-8 md:p-10 relative overflow-hidden text-white shadow-lg">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500 rounded-full blur-[60px] opacity-60 -translate-y-1/2 translate-x-1/3 pointer-events-none" />
+      <section className="clean-card bg-primary border-primary-dark p-8 md:p-10 relative overflow-hidden text-white shadow-lg">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-primary-light rounded-full blur-[60px] opacity-60 -translate-y-1/2 translate-x-1/3 pointer-events-none" />
         
         <div className="relative z-10">
           <h1 className="text-3xl font-extrabold tracking-tight">
-            {saudacao}, <span className="text-indigo-200">{primeiroNome}</span>! 👋
+            {saudacao}, <span className="text-primary-muted">{primeiroNome}</span>! 👋
           </h1>
-          <p className="text-indigo-100 mt-2 text-[16px] max-w-xl font-medium">
+          <p className="text-primary-muted mt-2 text-[16px] max-w-xl font-medium">
             {isAdmin 
               ? "Bem-vindo ao painel de controle da Escola de Governo. Aqui está o resumo das operações de hoje."
               : "Pronto para continuar sua jornada de aprendizado? Acompanhe seus cursos e certificados por aqui."}
@@ -53,8 +106,44 @@ export default function DashboardPage() {
           <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center mb-5 border border-blue-100 group-hover:bg-blue-100 transition-colors">
             <GraduationCap className="w-6 h-6 text-blue-600" />
           </div>
-          <h2 className="text-lg font-bold text-slate-800">Minha Jornada</h2>
-          <p className="text-sm text-slate-500 mt-1.5 flex-1 leading-relaxed">Você ainda não está matriculado em nenhum curso.</p>
+          <h2 className="text-lg font-bold text-slate-800 mb-1.5">Minha Jornada</h2>
+          
+          <div className="flex-1 flex flex-col justify-start">
+            {loadingJornada ? (
+              <div className="py-4 flex items-center text-blue-600">
+                <Loader2 className="w-5 h-5 animate-spin" />
+                <span className="ml-2 text-sm text-slate-500">Carregando...</span>
+              </div>
+            ) : inscricoes.length === 0 ? (
+              <p className="text-sm text-slate-500 mt-1.5 leading-relaxed">Você ainda não está matriculado em nenhum curso.</p>
+            ) : (
+              <div className="flex flex-col gap-3 mt-2">
+                {inscricoes.slice(0, 3).map(insc => {
+                  const badge = getBadgeProps(insc.status);
+                  return (
+                    <div key={insc.id} className="group/item relative rounded-lg border border-slate-100 bg-slate-50/50 p-3 hover:bg-slate-50 transition-colors">
+                      <div className="flex items-start justify-between gap-2 mb-1.5">
+                        <h3 className="font-semibold text-slate-800 text-[13px] leading-tight line-clamp-2" title={insc.titulo_curso}>
+                          {insc.titulo_curso}
+                        </h3>
+                        <span className={`text-[10px] px-2 py-0.5 rounded-md font-bold whitespace-nowrap border ${badge.className}`}>
+                          {badge.label}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-[11px] font-medium text-slate-600 bg-white px-1.5 py-0.5 rounded shadow-sm border border-slate-200">
+                          {insc.codigo_turma}
+                        </span>
+                        <span className="text-[11px] text-slate-500 font-medium">
+                          {formatData(insc.data_inicio)} - {formatData(insc.data_termino)}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
           
           <Link href="/dashboard/cursos" className="mt-6 flex items-center gap-2 text-sm font-bold text-blue-600 hover:text-blue-500 transition-colors group/link w-fit">
             Explorar Catálogo <ArrowRight className="w-4 h-4 group-hover/link:translate-x-1 transition-transform" />
@@ -92,12 +181,12 @@ export default function DashboardPage() {
           <div className="clean-card p-6 md:p-8 flex flex-col md:col-span-2 lg:col-span-3 bg-slate-50 border-slate-200 shadow-none">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
               <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-xl bg-indigo-100 flex items-center justify-center border border-indigo-200">
-                  <TrendingUp className="w-6 h-6 text-indigo-600" />
+                <div className="w-12 h-12 rounded-xl bg-primary-muted flex items-center justify-center border border-primary/20">
+                  <TrendingUp className="w-6 h-6 text-primary" />
                 </div>
                 <h2 className="text-xl font-extrabold text-slate-800 tracking-tight">Visão Geral da Gestão</h2>
               </div>
-              <span className="px-3 py-1.5 rounded-lg bg-indigo-600 text-xs font-bold text-white uppercase tracking-wider w-fit shadow-md shadow-indigo-600/20">Administrador</span>
+              <span className="px-3 py-1.5 rounded-lg bg-primary text-xs font-bold text-white uppercase tracking-wider w-fit shadow-md shadow-primary/20">Administrador</span>
             </div>
             
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 mt-2">

@@ -35,7 +35,7 @@ interface FormState {
   matricula:        string; 
   empresa:          string; 
   secretaria:       string;
-  email_chefe:      string;
+  cpf_chefe:        string;
   password:         string;
   passwordConfirm:  string;
 }
@@ -43,7 +43,7 @@ interface FormState {
 const INITIAL_FORM: FormState = {
   cpf: "", email: "", otp: "", nome_completo: "", telefone: "",
   data_nascimento: "", responsavel_nome: "", responsavel_cpf: "",
-  tipo_usuario: "CIDADAO", matricula: "", empresa: "", secretaria: "", email_chefe: "",
+  tipo_usuario: "CIDADAO", matricula: "", empresa: "", secretaria: "", cpf_chefe: "",
   password: "", passwordConfirm: "",
 };
 
@@ -58,7 +58,7 @@ function FieldGroup({ label, children }: { label: string; children: React.ReactN
   return (
     <div>
       <label className="form-label">{label}</label>
-      <div className="relative input-group">{children}</div>
+      <div className="relative">{children}</div>
     </div>
   );
 }
@@ -66,19 +66,19 @@ function FieldGroup({ label, children }: { label: string; children: React.ReactN
 function IconInput({ icon: Icon, errorMsg, ...props }: any) {
   return (
     <>
-      {Icon && <Icon className="input-icon" />}
+      {Icon && <Icon className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />}
       <input
         {...props}
         className={cn(
-          "input-dark", Icon ? "input-dark-icon" : "",
-          errorMsg ? "input-dark-error" : "", props.className
+          "input-light", Icon ? "pl-11" : "",
+          errorMsg ? "input-error" : "", props.className
         )}
       />
       <AnimatePresence>
         {errorMsg && (
           <motion.p
             initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-            className="flex items-center gap-1.5 text-[12px] text-red-400 mt-1 ml-1 font-medium"
+            className="flex items-center gap-1.5 text-[12px] text-red-500 mt-1 ml-1 font-medium"
           >
             <AlertTriangle className="w-3 h-3 flex-shrink-0" />
             {errorMsg}
@@ -93,7 +93,7 @@ function StepProgress({ current, total }: { current: number; total: number }) {
   return (
     <div className="flex items-center gap-1.5 mb-8">
       {Array.from({ length: total }).map((_, i) => (
-        <div key={i} className={cn("h-[3px] flex-1 rounded-full transition-all duration-500", i + 1 <= current ? "bg-primary" : "bg-white/[0.06]")} />
+        <div key={i} className={cn("h-[3px] flex-1 rounded-full transition-all duration-500", i + 1 <= current ? "bg-primary" : "bg-slate-200")} />
       ))}
     </div>
   );
@@ -383,7 +383,7 @@ export default function RegistroPage() {
       setIsLoading(false); return;
     }
 
-    const dados_servidor: any = { secretaria: form.secretaria || null, email_chefe: form.email_chefe || null, dt_nascimento: form.data_nascimento };
+    const dados_servidor: any = { secretaria: form.secretaria || null, cpf_chefe: form.cpf_chefe ? form.cpf_chefe.replace(/\D/g, "") : null, dt_nascimento: form.data_nascimento };
     if (form.tipo_usuario === "SERVIDOR_ATIVO") dados_servidor.matricula = form.matricula;
     else if (form.tipo_usuario !== "CIDADAO") dados_servidor.empresa = form.empresa;
 
@@ -427,7 +427,7 @@ export default function RegistroPage() {
 
   if (isInitializing) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#020617]">
+      <div className="min-h-screen flex items-center justify-center">
         <Loader2 className="w-10 h-10 animate-spin text-primary" />
       </div>
     );
@@ -436,34 +436,34 @@ export default function RegistroPage() {
   return (
     <main className="min-h-screen flex items-center justify-center p-4 py-12 relative overflow-hidden">
       <div className="fixed inset-0 -z-10 pointer-events-none">
-        <div className="absolute -top-1/3 -right-1/4 w-1/2 h-1/2 rounded-full bg-success/10  blur-[180px]" />
-        <div className="absolute -bottom-1/3 -left-1/4 w-1/2 h-1/2 rounded-full bg-primary/20 blur-[180px]" />
+        <div className="absolute -top-1/3 -right-1/4 w-1/2 h-1/2 rounded-full bg-success/5 blur-[180px]" />
+        <div className="absolute -bottom-1/3 -left-1/4 w-1/2 h-1/2 rounded-full bg-primary/10 blur-[180px]" />
       </div>
 
-      <div className="glass-card w-full max-w-lg p-8">
+      <div className="clean-card w-full max-w-lg p-8">
         <header className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-3">
             {step > 1 && (
               <button
                 onClick={handleBack}
-                className="w-9 h-9 rounded-xl bg-white/[0.05] hover:bg-white/10 border border-white/[0.06]
-                           flex items-center justify-center text-slate-400 hover:text-slate-100 transition-all active:scale-95"
+                className="w-9 h-9 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200
+                           flex items-center justify-center text-slate-500 hover:text-slate-700 transition-all active:scale-95"
               >
                 <ArrowLeft className="w-4 h-4" />
               </button>
             )}
             <div>
-              <h1 className="text-xl font-bold text-slate-100 leading-tight">Criar Conta</h1>
+              <h1 className="text-xl font-bold text-slate-900 leading-tight">Criar Conta</h1>
               <p className="text-[12px] text-slate-500">Etapa {stepIndex + 1} de {totalSteps}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
             {step > 1 && (
-              <button onClick={handleResetRegistration} title="Recomeçar do zero" className="w-10 h-10 rounded-xl bg-white/5 hover:bg-white/10 border border-white/5 flex items-center justify-center text-slate-400 transition-all">
+              <button onClick={handleResetRegistration} title="Recomeçar do zero" className="w-10 h-10 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-500 transition-all">
                 <RefreshCcw className="w-4 h-4" />
               </button>
             )}
-            <div className="w-10 h-10 rounded-xl bg-primary/20 text-primary-light flex items-center justify-center border border-primary/20">
+            <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center border border-primary/20">
               <ShieldCheck className="w-5 h-5" />
             </div>
           </div>
@@ -485,12 +485,12 @@ export default function RegistroPage() {
                   <IconInput icon={Mail} type="email" placeholder="email@exemplo.com" value={form.email} onChange={(e: any) => set("email", e.target.value)} />
                 </FieldGroup>
 
-                <button onClick={() => handleRequestOTP(false)} disabled={!!cpfError || !form.email || isLoading} className="btn-primary mt-2">
+                <button onClick={() => handleRequestOTP(false)} disabled={!!cpfError || !form.email || isLoading} className="btn-primary w-full mt-2">
                   {isLoading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : "Validar E-mail"}
                 </button>
 
                 <p className="text-center text-[13px] text-slate-500 pt-1">
-                  Já possui conta? <Link href="/login" className="text-secondary hover:text-secondary-light font-medium transition-colors">Faça login</Link>
+                  Já possui conta? <Link href="/login" className="text-primary hover:text-primary-dark font-medium transition-colors">Faça login</Link>
                 </p>
               </motion.div>
             )}
@@ -499,20 +499,20 @@ export default function RegistroPage() {
             {step === 2 && (
               <motion.div key="s2" variants={SLIDE} initial="hidden" animate="visible" exit="exit" className="space-y-4">
                 <div className="text-center pb-2">
-                  <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-blue-500/10 text-blue-400 mb-3">
+                  <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-primary/10 text-primary mb-3">
                     <Mail className="w-7 h-7" />
                   </div>
-                  <h2 className="text-[18px] font-bold text-slate-100">Verifique seu E-mail</h2>
-                  <p className="text-[14px] text-slate-400 mt-2 leading-relaxed">
-                    Nós enviamos um código para <br/><strong className="text-white">{form.email}</strong>
+                  <h2 className="text-[18px] font-bold text-slate-900">Verifique seu E-mail</h2>
+                  <p className="text-[14px] text-slate-500 mt-2 leading-relaxed">
+                    Nós enviamos um código para <br/><strong className="text-slate-800">{form.email}</strong>
                   </p>
-                  <button onClick={() => setStep(1)} className="text-[12px] text-secondary hover:text-secondary-light underline underline-offset-2 mt-1">
+                  <button onClick={() => setStep(1)} className="text-[12px] text-slate-500 hover:text-slate-800 underline underline-offset-2 mt-1">
                     E-mail incorreto? Alterar
                   </button>
                 </div>
 
-                <div className="p-4 bg-white/5 border border-white/10 rounded-xl mb-4 text-center">
-                  <p className="text-[13px] text-slate-300">
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl mb-4 text-center">
+                  <p className="text-[13px] text-slate-600">
                     Abra seu e-mail (celular ou computador), veja o <strong>código de 6 números</strong> e digite abaixo:
                   </p>
                 </div>
@@ -529,7 +529,7 @@ export default function RegistroPage() {
                 <button 
                   onClick={handleVerifyOTP} 
                   disabled={form.otp.length !== 6 || isLoading || otpAttempts >= 3} 
-                  className="btn-primary mt-2 h-12"
+                  className="btn-primary w-full mt-2 h-12"
                 >
                   {isLoading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : "Confirmar Código"}
                 </button>
@@ -539,7 +539,7 @@ export default function RegistroPage() {
                     type="button"
                     onClick={() => handleRequestOTP(true)}
                     disabled={countdown > 0 || isLoading}
-                    className="text-[13px] font-medium text-slate-400 hover:text-white disabled:opacity-50 disabled:hover:text-slate-400 transition-colors"
+                    className="text-[13px] font-medium text-slate-500 hover:text-slate-800 disabled:opacity-50 disabled:hover:text-slate-500 transition-colors"
                   >
                     {countdown > 0 
                       ? `Reenviar código em ${formatTempo(countdown)}`
@@ -567,15 +567,15 @@ export default function RegistroPage() {
                 </div>
 
                 {isMenor && (
-                  <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} className="flex items-start gap-2 rounded-xl p-3 bg-amber-500/10 border border-amber-500/20">
-                    <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
-                    <p className="text-[12px] text-amber-300 leading-relaxed">
+                  <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} className="flex items-start gap-2 rounded-xl p-3 bg-amber-50 border border-amber-200">
+                    <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+                    <p className="text-[12px] text-amber-800 leading-relaxed">
                       Como você possui menos de 18 anos, informaremos dados do responsável na próxima etapa.
                     </p>
                   </motion.div>
                 )}
 
-                <button onClick={handleNext} className="btn-primary mt-2">Continuar</button>
+                <button onClick={handleNext} className="btn-primary w-full mt-2">Continuar</button>
               </motion.div>
             )}
 
@@ -583,10 +583,10 @@ export default function RegistroPage() {
             {step === 3.5 && (
               <motion.div key="s3_5" variants={SLIDE} initial="hidden" animate="visible" exit="exit" className="space-y-5">
                 <div className="text-center pb-4">
-                  <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 mb-3">
+                  <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-warning-light border border-warning/20 text-warning mb-3">
                     <UserRound className="w-7 h-7" />
                   </div>
-                  <h2 className="text-[16px] font-semibold text-slate-100">Responsável Legal</h2>
+                  <h2 className="text-[16px] font-semibold text-slate-900">Responsável Legal</h2>
                 </div>
 
                 <FieldGroup label="CPF do Responsável *">
@@ -597,7 +597,7 @@ export default function RegistroPage() {
                   <IconInput icon={UserRound} placeholder="Pai, mãe ou responsável legal" value={form.responsavel_nome} onChange={(e: any) => set("responsavel_nome", e.target.value)} />
                 </FieldGroup>
 
-                <button onClick={handleNext} disabled={!!cpfRespError || cpfRespLimpo.length !== 11 || !form.responsavel_nome} className="btn-primary">Continuar</button>
+                <button onClick={handleNext} disabled={!!cpfRespError || cpfRespLimpo.length !== 11 || !form.responsavel_nome} className="btn-primary w-full">Continuar</button>
               </motion.div>
             )}
 
@@ -605,28 +605,28 @@ export default function RegistroPage() {
             {step === 4 && (
               <motion.div key="s4" variants={SLIDE} initial="hidden" animate="visible" exit="exit" className="space-y-3">
                 <div className="text-center pb-2">
-                  <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-primary/20 border border-primary/25 text-primary-light mb-3">
+                  <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-primary/10 border border-primary/20 text-primary mb-3">
                     <Briefcase className="w-6 h-6" />
                   </div>
-                  <h2 className="text-[16px] font-semibold text-slate-100">Qual seu vínculo?</h2>
+                  <h2 className="text-[16px] font-semibold text-slate-900">Qual seu vínculo?</h2>
                   <p className="text-[13px] text-slate-500 mt-1">Isso determina seus acessos no Portal.</p>
                 </div>
 
                 {tiposVinculo.map((tipo) => {
                   const isSelected = form.tipo_usuario === tipo.id;
                   return (
-                    <button key={tipo.id} onClick={() => set("tipo_usuario", tipo.id)} className={cn("w-full p-4 rounded-2xl border text-left flex items-center justify-between transition-all duration-200 active:scale-[0.99]", isSelected ? "border-primary/60 bg-primary/[0.12] shadow-[0_0_20px_rgba(37,99,235,0.18)]" : "border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.04]")}>
+                    <button key={tipo.id} onClick={() => set("tipo_usuario", tipo.id)} className={cn("w-full p-4 rounded-2xl border text-left flex items-center justify-between transition-all duration-200 active:scale-[0.99]", isSelected ? "border-primary bg-primary/5 shadow-sm" : "border-slate-200 bg-white hover:bg-slate-50")}>
                       <div>
-                        <span className={cn("block text-sm font-semibold mb-0.5", isSelected ? "text-slate-100" : "text-slate-300")}>{tipo.label}</span>
+                        <span className={cn("block text-sm font-semibold mb-0.5", isSelected ? "text-slate-900" : "text-slate-700")}>{tipo.label}</span>
                         <span className="text-[12px] text-slate-500">{tipo.desc}</span>
                       </div>
-                      <div className={cn("w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ml-3", isSelected ? "border-primary bg-primary" : "border-slate-700")}>
+                      <div className={cn("w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ml-3", isSelected ? "border-primary bg-primary" : "border-slate-300")}>
                         {isSelected && <div className="w-2 h-2 rounded-full bg-white" />}
                       </div>
                     </button>
                   );
                 })}
-                <button onClick={handleNext} className="btn-primary !mt-5">Confirmar Vínculo</button>
+                <button onClick={handleNext} className="btn-primary w-full !mt-5">Confirmar Vínculo</button>
               </motion.div>
             )}
 
@@ -634,7 +634,7 @@ export default function RegistroPage() {
             {step === 5 && (
               <motion.div key="s5" variants={SLIDE} initial="hidden" animate="visible" exit="exit" className="space-y-4">
                 <div className="text-center pb-2">
-                  <h2 className="text-[16px] font-semibold text-slate-100">Dados da Lotação</h2>
+                  <h2 className="text-[16px] font-semibold text-slate-900">Dados da Lotação</h2>
                   <p className="text-[13px] text-slate-500 mt-1">Informações sobre seu órgão ou empresa.</p>
                 </div>
                 {form.tipo_usuario === "SERVIDOR_ATIVO" && (
@@ -650,10 +650,17 @@ export default function RegistroPage() {
                 <FieldGroup label="Secretaria / Setor">
                   <IconInput placeholder="Ex: Sec. de Educação, Saúde..." value={form.secretaria} onChange={(e: any) => set("secretaria", e.target.value)} />
                 </FieldGroup>
-                <FieldGroup label="E-mail da chefia imediata">
-                  <IconInput icon={Mail} type="email" placeholder="Utilizado em requerimentos" value={form.email_chefe} onChange={(e: any) => set("email_chefe", e.target.value)} />
+                <FieldGroup label="CPF da Chefia Imediata">
+                  <IconInput icon={User} type="text" inputMode="numeric" placeholder="000.000.000-00" value={form.cpf_chefe} onChange={(e: any) => set("cpf_chefe", mascaraCPF(e.target.value))} />
+                  <p className="text-[12px] text-slate-500 mt-1">Por questões de privacidade (LGPD), o sistema não exibirá o nome da chefia. O vínculo será feito de forma segura.</p>
                 </FieldGroup>
-                <button onClick={handleNext} className="btn-primary mt-2">Avançar para Senha</button>
+                <button onClick={() => {
+                  const cpfChefeLimpo = form.cpf_chefe.replace(/\D/g, "");
+                  if (cpfChefeLimpo && (cpfChefeLimpo.length !== 11 || !validarCPF(cpfChefeLimpo))) {
+                    return toast.error("CPF da chefia inválido.");
+                  }
+                  handleNext();
+                }} className="btn-primary w-full mt-2">Avançar para Senha</button>
               </motion.div>
             )}
 
@@ -661,10 +668,10 @@ export default function RegistroPage() {
             {step === 6 && (
               <motion.form key="s6" variants={SLIDE} initial="hidden" animate="visible" exit="exit" onSubmit={handleSubmit} className="space-y-4">
                 <div className="text-center pb-2">
-                  <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-success/10 border border-success/20 text-success-light mb-3">
+                  <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-success/10 border border-success/20 text-success mb-3">
                     <Lock className="w-6 h-6" />
                   </div>
-                  <h2 className="text-[16px] font-semibold text-slate-100">Definir Senha</h2>
+                  <h2 className="text-[16px] font-semibold text-slate-900">Definir Senha</h2>
                   <p className="text-[13px] text-slate-500 mt-1">Sua conta já está validada. Finalize criando a senha.</p>
                 </div>
                 <FieldGroup label="Senha (mínimo 6 caracteres)">
@@ -673,7 +680,7 @@ export default function RegistroPage() {
                 <FieldGroup label="Confirme a senha">
                   <IconInput icon={Lock} type="password" placeholder="••••••••" value={form.passwordConfirm} onChange={(e: any) => set("passwordConfirm", e.target.value)} errorMsg={form.passwordConfirm && form.password !== form.passwordConfirm ? "As senhas não coincidem." : undefined} />
                 </FieldGroup>
-                <button type="submit" disabled={isLoading || form.password.length < 6 || form.password !== form.passwordConfirm} className="btn-success relative overflow-hidden group mt-2">
+                <button type="submit" disabled={isLoading || form.password.length < 6 || form.password !== form.passwordConfirm} className="btn-success w-full relative overflow-hidden group mt-2">
                   <span className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/10 to-transparent group-hover:animate-shimmer" />
                   {isLoading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : (
                     <span className="flex items-center justify-center gap-2">

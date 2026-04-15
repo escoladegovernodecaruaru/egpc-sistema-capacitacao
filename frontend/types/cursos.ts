@@ -20,6 +20,7 @@ export interface Turma {
   data_fim: string | null;
   carga_horaria: number;
   vagas: number;
+  vagas_restantes?: number;
   instrutor_nome: string | null;
   status: StatusTurma;
   modalidade: string;
@@ -31,6 +32,7 @@ export interface Curso {
   codigo_oficial: string;
   titulo: string;
   ementa: string;
+  eixo?: string;
   tipo: "CENTRALIZADO" | "DESCENTRALIZADO";
   status_geral: StatusTurma;
   turmas?: Turma[];

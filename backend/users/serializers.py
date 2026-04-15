@@ -16,7 +16,7 @@ class ProfileSerializer(serializers.ModelSerializer):
     secretaria   = serializers.SerializerMethodField()
     matricula    = serializers.SerializerMethodField()
     empresa      = serializers.SerializerMethodField()
-    email_chefe  = serializers.SerializerMethodField()
+    cpf_chefe    = serializers.SerializerMethodField()
     # URL absoluta da foto de perfil (None se não houver)
     foto_perfil_url = serializers.SerializerMethodField()
 
@@ -30,7 +30,7 @@ class ProfileSerializer(serializers.ModelSerializer):
             # Vínculo
             "tipo_usuario", "tipo_usuario_display",
             # Dados funcionais (raw + extraídos)
-            "dados_servidor", "secretaria", "matricula", "empresa", "email_chefe",
+            "dados_servidor", "secretaria", "matricula", "empresa", "cpf_chefe",
             # Foto de perfil
             "foto_perfil_url",
             # Regras EGPC
@@ -41,7 +41,7 @@ class ProfileSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             "id", "cpf", "esta_bloqueado", "tipo_usuario_display",
-            "secretaria", "matricula", "empresa", "email_chefe",
+            "secretaria", "matricula", "empresa", "cpf_chefe",
             "foto_perfil_url", "criado_em",
         ]
 
@@ -61,8 +61,8 @@ class ProfileSerializer(serializers.ModelSerializer):
     def get_empresa(self, obj):
         return self._ds(obj).get("empresa")
 
-    def get_email_chefe(self, obj):
-        return self._ds(obj).get("email_chefe")
+    def get_cpf_chefe(self, obj):
+        return self._ds(obj).get("cpf_chefe")
 
     def get_foto_perfil_url(self, obj) -> str | None:
         """Retorna a URL pública da foto ou None se não houver."""

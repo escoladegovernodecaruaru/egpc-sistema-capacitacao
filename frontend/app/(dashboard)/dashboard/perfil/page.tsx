@@ -30,8 +30,8 @@ function formatDate(iso: string | null) {
 function SectionTitle({ icon: Icon, title }: { icon: React.ElementType; title: string }) {
   return (
     <div className="flex items-center gap-2 mb-5 pb-3 border-b border-slate-100">
-      <div className="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center">
-        <Icon className="w-4 h-4 text-indigo-600" />
+      <div className="w-8 h-8 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center">
+        <Icon className="w-4 h-4 text-primary" />
       </div>
       <h2 className="text-[15px] font-bold text-slate-800">{title}</h2>
     </div>
@@ -42,7 +42,7 @@ function ReadField({ label, value, mono = false }: { label: string; value?: stri
   return (
     <div className="space-y-1">
       <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">{label}</p>
-      <p className={cn("text-[14px] text-slate-800 font-medium", mono && "font-mono tracking-wide font-bold text-indigo-700", !value && "text-slate-400 italic")}>
+      <p className={cn("text-[14px] text-slate-800 font-medium", mono && "font-mono tracking-wide font-bold text-primary-dark", !value && "text-slate-400 italic")}>
         {value || "Não informado"}
       </p>
     </div>
@@ -86,9 +86,9 @@ function StatusBadge({ active, label }: { active: boolean; label: string }) {
 const TIPO_COLOR: Record<string, string> = {
   SERVIDOR_ATIVO: "bg-slate-100 text-slate-700 border-slate-200",
   CIDADAO:        "bg-slate-100 text-slate-600 border-slate-200",
-  TERCEIRIZADO:   "bg-amber-50 text-amber-600 border-amber-200",
+  TERCEIRIZADO:   "bg-warning/10 text-warning border-warning/20",
   ESTAGIARIO:     "bg-purple-50 text-purple-600 border-purple-200",
-  INSTRUTOR:      "bg-indigo-50 text-indigo-700 border-indigo-200",
+  INSTRUTOR:      "bg-primary/10 text-primary-dark border-primary/20",
 };
 
 // ─── Avatar com Upload ────────────────────────────────────────────────────────
@@ -145,13 +145,13 @@ function AvatarUpload({
         disabled={loading}
         title="Trocar foto de perfil"
         className="relative w-20 h-20 rounded-2xl overflow-hidden border-2 border-white shadow-sm
-                   hover:border-indigo-400 transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-indigo-500/20"
+                   hover:border-primary-light transition-all duration-200 focus:outline-none focus:ring-4 focus:ring-primary/20"
       >
         {preview ? (
           <Image src={preview} alt="Foto de perfil" fill className="object-cover" unoptimized />
         ) : (
-          <div className="w-full h-full bg-indigo-100 flex items-center justify-center
-                          text-2xl font-black text-indigo-600">
+          <div className="w-full h-full bg-primary/10 flex items-center justify-center
+                          text-2xl font-black text-primary">
             {nome.charAt(0).toUpperCase()}
           </div>
         )}
@@ -172,7 +172,7 @@ function AvatarUpload({
       />
 
       <div className="absolute -bottom-2 -right-2 w-8 h-8 rounded-full bg-white shadow-md border border-slate-100 flex items-center justify-center pointer-events-none">
-        <Camera className="w-4 h-4 text-indigo-600" />
+        <Camera className="w-4 h-4 text-primary" />
       </div>
     </div>
   );
@@ -188,17 +188,30 @@ export default function PerfilPage() {
 
   const [nomeSocial,  setNomeSocial]  = useState("");
   const [telefone,    setTelefone]    = useState("");
-  const [emailChefe,  setEmailChefe]  = useState("");
+  const [cpfChefe,    setCpfChefe]    = useState("");
 
   useEffect(() => {
     if (profile) {
       setNomeSocial(profile.nome_social  || "");
       setTelefone(  profile.telefone     || "");
-      setEmailChefe(profile.email_chefe  || "");
+      
+      let initialCpfChefe = profile.cpf_chefe || "";
+      // Tratamento de dados legados: se contiver letras ou @ (ex: email), ignora
+      if (/[a-zA-Z@]/.test(initialCpfChefe)) {
+        initialCpfChefe = "";
+      } else if (initialCpfChefe) {
+        initialCpfChefe = require("@/lib/validations").mascaraCPF(initialCpfChefe);
+      }
+      setCpfChefe(initialCpfChefe);
     }
   }, [profile]);
 
   const handleSalvar = async () => {
+    const cpfChefeLimpo = cpfChefe.replace(/\D/g, "");
+    if (cpfChefeLimpo && (cpfChefeLimpo.length !== 11 || !require("@/lib/validations").validarCPF(cpfChefeLimpo))) {
+      return toast.error("CPF da chefia inválido.");
+    }
+
     setIsSaving(true);
     setSaved(false);
     try {
@@ -208,7 +221,7 @@ export default function PerfilPage() {
         body: JSON.stringify({
           nome_social:  nomeSocial  || null,
           telefone:     telefone.replace(/\D/g, "") || null,
-          email_chefe:  emailChefe  || null,
+          cpf_chefe:    cpfChefeLimpo || null,
         }),
       });
       await refreshProfile();
@@ -226,7 +239,7 @@ export default function PerfilPage() {
   const temAlteracoes =
     nomeSocial !== (profile?.nome_social  || "") ||
     telefone   !== (profile?.telefone     || "") ||
-    emailChefe !== (profile?.email_chefe  || "");
+    cpfChefe   !== (profile?.cpf_chefe    || "");
 
   if (isLoading) {
     return (
@@ -343,11 +356,12 @@ export default function PerfilPage() {
             )}
             <ReadField label="Secretaria / Setor" value={profile.secretaria} />
             <EditField
-              label="E-mail da chefia imediata"
-              value={emailChefe}
-              onChange={setEmailChefe}
-              type="email"
-              placeholder="chefia@orgao.gov.br"
+              label="CPF da chefia imediata"
+              value={cpfChefe}
+              onChange={setCpfChefe}
+              type="text"
+              placeholder="000.000.000-00"
+              mask={require("@/lib/validations").mascaraCPF}
             />
           </div>
         </motion.div>

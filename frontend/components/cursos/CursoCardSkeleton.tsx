@@ -8,12 +8,7 @@
 
 export default function CursoCardSkeleton() {
   return (
-    <div className="
-      flex flex-col rounded-2xl overflow-hidden
-      bg-white border border-slate-200
-      shadow-sm
-      animate-pulse
-    ">
+    <div className="clean-card flex flex-col animate-pulse">
       {/* Imagem skeleton */}
       <div className="h-44 w-full bg-slate-100" />
 

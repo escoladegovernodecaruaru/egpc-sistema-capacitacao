@@ -36,7 +36,7 @@ export interface Profile {
   secretaria:               string | null;
   matricula:                string | null;
   empresa:                  string | null;
-  email_chefe:              string | null;
+  cpf_chefe:                string | null;
   foto_perfil_url:          string | null;
   esta_de_licenca:          boolean;
   bloqueado_ate:            string | null;

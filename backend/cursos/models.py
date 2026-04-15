@@ -238,6 +238,12 @@ class Inscricao(models.Model):
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDENTE)
     data_inscricao = models.DateTimeField(auto_now_add=True)
     hash_validacao = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
+    
+    # Auditoria
+    aprovado_por = models.ForeignKey('users.Profile', on_delete=models.SET_NULL, null=True, blank=True, related_name='aprovacoes')
+    aprovado_em = models.DateTimeField(null=True, blank=True)
+    ip_aprovacao = models.GenericIPAddressField(null=True, blank=True)
+    justificativa_rejeicao = models.TextField(null=True, blank=True)
 
     class Meta:
         db_table = 'catalogo_inscricoes'

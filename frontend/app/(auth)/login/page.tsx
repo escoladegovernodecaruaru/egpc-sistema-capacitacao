@@ -110,21 +110,21 @@ export default function LoginPage() {
 
       {/* Luzes atmosféricas de fundo */}
       <div className="fixed inset-0 -z-10 pointer-events-none">
-        <div className="absolute -top-1/4 -left-1/4 w-1/2 h-1/2 rounded-full bg-primary/25 blur-[160px]" />
-        <div className="absolute -bottom-1/4 -right-1/4 w-1/2 h-1/2 rounded-full bg-secondary/15 blur-[160px]" />
+        <div className="absolute -top-1/4 -left-1/4 w-1/2 h-1/2 rounded-full bg-primary/20 blur-[160px]" />
+        <div className="absolute -bottom-1/4 -right-1/4 w-1/2 h-1/2 rounded-full bg-secondary/10 blur-[160px]" />
       </div>
 
-      <div className="glass-card w-full max-w-md p-8">
+      <div className="clean-card w-full max-w-md p-8">
 
         {/* Cabeçalho da marca */}
         <header className="text-center mb-10">
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl mb-4
-                          bg-primary/20 border border-primary/30 text-primary-light
-                          shadow-[0_0_40px_rgba(0,64,54,0.3)]">
+                          bg-primary/10 border border-primary/20 text-primary
+                          shadow-sm">
             <ShieldCheck className="w-8 h-8" />
           </div>
-          <h1 className="text-[22px] font-bold text-zinc-100 tracking-tight">Portal EGPC</h1>
-          <p className="text-[13px] text-zinc-500 mt-1">Escola de Governo de Caruaru</p>
+          <h1 className="text-[22px] font-bold text-slate-900 tracking-tight">Portal EGPC</h1>
+          <p className="text-[13px] text-slate-500 mt-1">Escola de Governo de Caruaru</p>
         </header>
 
         {/* Barra de progresso das etapas */}
@@ -134,7 +134,7 @@ export default function LoginPage() {
               key={s}
               className={cn(
                 "h-[3px] flex-1 rounded-full transition-all duration-500",
-                step >= s ? "bg-primary" : "bg-white/[0.06]"
+                step >= s ? "bg-primary" : "bg-slate-200"
               )}
             />
           ))}
@@ -152,8 +152,8 @@ export default function LoginPage() {
             >
               <div>
                 <label htmlFor="cpf" className="form-label">CPF</label>
-                <div className="relative input-group">
-                  <User className="input-icon" />
+                <div className="relative">
+                  <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
                   <input
                     id="cpf"
                     type="text"
@@ -163,7 +163,7 @@ export default function LoginPage() {
                     placeholder="000.000.000-00"
                     value={cpf}
                     onChange={(e) => setCpf(mascaraCPF(e.target.value))}
-                    className="input-dark input-dark-icon"
+                    className="input-light pl-11"
                   />
                 </div>
               </div>
@@ -171,7 +171,7 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={cpfLimpo.length !== 11 || isLoading}
-                className="btn-primary group"
+                className="btn-primary group w-full"
               >
                 {isLoading
                   ? <Loader2 className="w-5 h-5 animate-spin mx-auto" />
@@ -183,9 +183,9 @@ export default function LoginPage() {
                   )}
               </button>
 
-              <p className="text-center text-[13px] text-zinc-500 pt-2">
+              <p className="text-center text-[13px] text-slate-500 pt-2">
                 Não tem conta?{" "}
-                <Link href="/registro" className="text-secondary font-medium hover:text-secondary-light transition-colors">
+                <Link href="/registro" className="text-primary font-medium hover:text-primary-dark transition-colors">
                   Cadastre-se aqui
                 </Link>
               </p>
@@ -201,9 +201,9 @@ export default function LoginPage() {
               className="space-y-5"
             >
               {/* Info: mostra qual CPF foi encontrado (sem expor o e-mail) */}
-              <div className="flex items-center gap-2.5 p-3 rounded-xl bg-primary/10 border border-primary/20">
-                <ShieldCheck className="w-4 h-4 text-primary-light flex-shrink-0" />
-                <p className="text-[13px] text-zinc-300">
+              <div className="flex items-center gap-2.5 p-3 rounded-xl bg-primary/5 border border-primary/20">
+                <ShieldCheck className="w-4 h-4 text-primary flex-shrink-0" />
+                <p className="text-[13px] text-slate-700">
                   CPF identificado. Insira sua senha para continuar.
                 </p>
               </div>
@@ -214,13 +214,13 @@ export default function LoginPage() {
                   <button
                     type="button"
                     onClick={() => { setStep(1); setPassword(""); setEmailReal(""); }}
-                    className="text-[12px] text-zinc-500 hover:text-zinc-300 transition-colors"
+                    className="text-[12px] text-slate-500 hover:text-slate-800 transition-colors"
                   >
                     Alterar CPF
                   </button>
                 </div>
-                <div className="relative input-group">
-                  <Lock className="input-icon" />
+                <div className="relative">
+                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
                   <input
                     id="password"
                     type={showPassword ? "text" : "password"}
@@ -228,13 +228,13 @@ export default function LoginPage() {
                     autoFocus
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="input-dark input-dark-icon pr-11"
+                    className="input-light pl-11 pr-11"
                   />
                   {/* Toggle visibilidade da senha */}
                   <button
                     type="button"
                     onClick={() => setShowPassword((v) => !v)}
-                    className="absolute inset-y-0 right-0 flex items-center px-3 text-zinc-600 hover:text-zinc-400 transition-colors"
+                    className="absolute inset-y-0 right-0 flex items-center px-3 text-slate-400 hover:text-slate-600 transition-colors"
                     tabIndex={-1}
                     title={showPassword ? "Ocultar senha" : "Mostrar senha"}
                   >
@@ -248,16 +248,16 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={!password || isLoading}
-                className="btn-primary"
+                className="btn-primary w-full"
               >
                 {isLoading
                   ? <Loader2 className="w-5 h-5 animate-spin mx-auto" />
                   : "Acessar o Portal"}
               </button>
 
-              <p className="text-center text-[13px] text-zinc-500 pt-2">
+              <p className="text-center text-[13px] text-slate-500 pt-2">
                 Não tem conta?{" "}
-                <Link href="/registro" className="text-secondary font-medium hover:text-secondary-light transition-colors">
+                <Link href="/registro" className="text-primary font-medium hover:text-primary-dark transition-colors">
                   Cadastre-se aqui
                 </Link>
               </p>

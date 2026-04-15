@@ -220,12 +220,14 @@ export default function GestaoCursosPage() {
         <motion.div initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} className="space-y-6">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
             <div>
-              <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Catálogo de Cursos</h1>
-              <p className="text-sm text-slate-500 mt-1">Crie cursos base e adicione turmas atreladas, simulando cenários reais.</p>
+              <h1 className="text-2xl font-bold text-slate-800 tracking-tight">Gestão Institucional</h1>
+              <p className="text-sm text-slate-500 mt-1">Gerencie os cursos e turmas em execução.</p>
             </div>
-            <button onClick={() => setCurrentView('curso')} className="btn-primary sm:w-auto shadow-primary/20 hover:shadow-primary/30">
-              <Plus className="w-4 h-4" /> Novo Curso Base
-            </button>
+            <div className="flex gap-3">
+              <button onClick={() => setCurrentView('curso')} className="btn-primary sm:w-auto shadow-primary/20 hover:shadow-primary/30">
+                <Plus className="w-4 h-4" /> Novo Curso Base
+              </button>
+            </div>
           </div>
 
           <div className="clean-card bg-white p-4 flex items-center gap-3">
