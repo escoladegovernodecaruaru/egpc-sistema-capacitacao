@@ -62,6 +62,12 @@ class Profile(AbstractBaseUser, PermissionsMixin):
     # Regras de Negócio EGPC
     esta_de_licenca = models.BooleanField(default=False, verbose_name="Está de Licença")
     bloqueado_ate = models.DateField(blank=True, null=True, verbose_name="Bloqueado até (Suspensão)")
+    # Nível de permissão especial: permite criar Solicitações de Reserva de Espaço
+    is_solicitante = models.BooleanField(
+        default=False,
+        verbose_name="É Solicitante",
+        help_text="Concede permissão para solicitar reservas de espaços institucionais."
+    )
     data_ultima_confirmacao = models.DateField(default=timezone.now, verbose_name="Última Confirmação (90 dias)")
 
     # Campos padrão Django

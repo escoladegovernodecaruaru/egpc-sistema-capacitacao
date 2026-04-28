@@ -23,10 +23,13 @@ from .models import Profile
 
 logger = logging.getLogger(__name__)
 
+import threading
+
 # ─── Cache simples em memória para as JWKs públicas do Supabase ──────────────
 _jwks_cache: dict = {}
 _jwks_fetched_at: float = 0.0
 _JWKS_TTL_SEGUNDOS = 600  # Re-busca as chaves a cada 10 minutos
+_jwks_lock = threading.Lock()
 
 
 def _obter_jwks(supabase_url: str) -> dict:
@@ -34,6 +37,7 @@ def _obter_jwks(supabase_url: str) -> dict:
     Busca as chaves públicas JWKS do Supabase.
     O endpoint padrão é: <SUPABASE_URL>/auth/v1/.well-known/jwks.json
     Retorna o JWKS cacheado enquanto o TTL não expirar.
+    Usa Lock para evitar exaustão de sockets em requisições concorrentes.
     """
     global _jwks_cache, _jwks_fetched_at
 
@@ -41,21 +45,27 @@ def _obter_jwks(supabase_url: str) -> dict:
     if _jwks_cache and (agora - _jwks_fetched_at) < _JWKS_TTL_SEGUNDOS:
         return _jwks_cache  # Cache ainda válido
 
-    url = f"{supabase_url.rstrip('/')}/auth/v1/.well-known/jwks.json"
-    try:
-        resp = http_requests.get(url, timeout=5)
-        resp.raise_for_status()
-        _jwks_cache = resp.json()
-        _jwks_fetched_at = agora
-        logger.debug("JWKS do Supabase atualizadas com sucesso.")
-    except Exception as exc:
-        logger.warning("Falha ao buscar JWKS do Supabase: %s", exc)
-        # Se já tínhamos cache antigo, retorna ele como fallback
-        if _jwks_cache:
+    with _jwks_lock:
+        # Double-check inside the lock in case another thread just updated it
+        agora = time.monotonic()
+        if _jwks_cache and (agora - _jwks_fetched_at) < _JWKS_TTL_SEGUNDOS:
             return _jwks_cache
-        raise exceptions.AuthenticationFailed(
-            _("Não foi possível validar o token: falha ao obter chaves públicas do provedor.")
-        )
+
+        url = f"{supabase_url.rstrip('/')}/auth/v1/.well-known/jwks.json"
+        try:
+            resp = http_requests.get(url, timeout=5)
+            resp.raise_for_status()
+            _jwks_cache = resp.json()
+            _jwks_fetched_at = agora
+            logger.debug("JWKS do Supabase atualizadas com sucesso.")
+        except Exception as exc:
+            logger.warning("Falha ao buscar JWKS do Supabase: %s", exc)
+            # Se já tínhamos cache antigo, retorna ele como fallback
+            if _jwks_cache:
+                return _jwks_cache
+            raise exceptions.AuthenticationFailed(
+                _("Não foi possível validar o token: falha ao obter chaves públicas do provedor.")
+            )
 
     return _jwks_cache
 

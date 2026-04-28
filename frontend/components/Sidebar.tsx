@@ -6,7 +6,8 @@ import { usePathname, useRouter } from "next/navigation";
 import Image from "next/image";
 import {
   BookOpen, LayoutDashboard, Users, LogOut,
-  FolderKanban, Menu, X, UserCircle, ChevronsUpDown
+  FolderKanban, Menu, X, UserCircle, ChevronsUpDown, CalendarDays, ClipboardList,
+  ShieldCheck
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useProfile } from "@/contexts/ProfileContext";
@@ -17,10 +18,16 @@ import { motion, AnimatePresence } from "framer-motion";
 const NAV = [
   { label: "Painel",       href: "/dashboard",          icon: LayoutDashboard, roles: ["*"] },
   { label: "Catálogo",     href: "/dashboard/cursos",   icon: BookOpen,        roles: ["*"] },
+  { label: "Agenda",       href: "/dashboard/agenda",  icon: CalendarDays,    roles: ["*"] },
+  { label: "Diário de Classe", href: "/dashboard/diario", icon: ClipboardList, roles: ["ADMIN", "IS_INSTRUTOR"] },
   { label: "Meu Perfil",   href: "/dashboard/perfil",   icon: UserCircle,      roles: ["*"] },
-  { label: "Minha Equipe", href: "/dashboard/equipe",   icon: Users,           roles: ["*"] },
-  { label: "Gestão",       href: "/dashboard/gestao",   icon: FolderKanban,    roles: ["ADMIN", "INSTRUTOR"] },
+  // "Minha Equipe" só aparece para quem pode ter subordinados (não cidadãos)
+  { label: "Minha Equipe", href: "/dashboard/equipe",   icon: Users,           roles: ["SERVIDOR_ATIVO", "TERCEIRIZADO", "ESTAGIARIO", "INSTRUTOR", "ADMIN"] },
+  // "Turmas Autorizadas" idem — só faz sentido para servidores que são chefia
+  { label: "Turmas Autorizadas", href: "/dashboard/delegada", icon: ShieldCheck, roles: ["SERVIDOR_ATIVO", "TERCEIRIZADO", "ESTAGIARIO", "INSTRUTOR", "ADMIN"] },
+  { label: "Gestão de Turmas",       href: "/dashboard/gestao",   icon: FolderKanban,    roles: ["ADMIN", "INSTRUTOR"] },
   { label: "Usuários",     href: "/dashboard/usuarios", icon: Users,           roles: ["ADMIN"] },
+  
 ];
 
 const TIPO_DOT: Record<string, string> = {
@@ -71,6 +78,9 @@ const filtered = NAV.filter((item) => {
     
     // Se a aba exige Instrutor e ele é Instrutor
     if (item.roles.includes(profile?.tipo_usuario ?? "")) return true;
+
+    // Se a aba exige a flag de instrutor, exibe se ele tiver turmas atribuídas
+    if (item.roles.includes("IS_INSTRUTOR") && profile?.is_instrutor) return true;
     
     return false;
   });

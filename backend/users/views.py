@@ -1,15 +1,13 @@
 import logging
 from django.conf import settings
 from django.utils import timezone
-from rest_framework import status, views
+from rest_framework import status, views, generics
 from rest_framework.response import Response
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser
 from jose import jwt as jose_jwt, JWTError, ExpiredSignatureError
-
 from .models import Profile
 from .serializers import ProfileSerializer
 from .authentication import SupabaseJWTAuthentication, SupabaseTokenValidator, _obter_jwks
-
 logger = logging.getLogger(__name__)
 
 
@@ -43,14 +41,15 @@ class PreValidateProfileView(views.APIView):
         return Response({"status": "success", "message": "Dados disponíveis para cadastro."}, status=status.HTTP_200_OK)
 
 
+from rest_framework.throttling import AnonRateThrottle
+
 class LookupEmailByCpfView(views.APIView):
     """
     Endpoint de consulta de e-mail por CPF, usado no fluxo de Login.
-    Resposta 200  → {"email": "usuario@dominio.com"}
-    Resposta 404  → CPF não encontrado
-    Resposta 422  → CPF inválido
+    Mascarado por segurança (ex: ma****os@gmail.com).
     """
     permission_classes = [AllowAny]
+    throttle_classes = [AnonRateThrottle]
 
     def post(self, request, *args, **kwargs):
         cpf = (request.data.get('cpf') or '').replace('.', '').replace('-', '').strip()
@@ -69,7 +68,21 @@ class LookupEmailByCpfView(views.APIView):
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        return Response({"email": profile.email}, status=status.HTTP_200_OK)
+        # Mascarar o email: mantem 2 primeiros caracteres, 2 ultimos antes da @, e o dominio
+        try:
+            name_part, domain_part = profile.email.split('@')
+            if len(name_part) > 4:
+                masked_name = name_part[:2] + '*' * (len(name_part) - 4) + name_part[-2:]
+            else:
+                masked_name = name_part[:1] + '*' * (len(name_part) - 1)
+            email_mascarado = f"{masked_name}@{domain_part}"
+        except:
+            email_mascarado = profile.email # fallback if split fails
+
+        return Response({
+            "email":      email_mascarado,  # para exibição na UI
+            "email_real": profile.email,    # para autenticação no Supabase
+        }, status=status.HTTP_200_OK)
 
 
 class RegisterProfileView(views.APIView):
@@ -107,27 +120,55 @@ class RegisterProfileView(views.APIView):
         tipo_usuario  = data.get('tipo_usuario', Profile.UserType.CIDADAO)
         dados_servidor = data.get('dados_servidor', {})
 
+        if dados_servidor and dados_servidor.get('cpf_chefe') == cpf:
+            return Response(
+                {"detail": "O CPF da sua chefia não pode ser idêntico ao seu próprio CPF."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         if not all([cpf, email, nome_completo]):
             return Response(
                 {"detail": "CPF, E-mail e Nome Completo são obrigatórios."},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        if Profile.objects.filter(cpf=cpf).exists():
-            return Response({"detail": "CPF já está em uso."}, status=status.HTTP_400_BAD_REQUEST)
+        # Resolve o Conflito de Instrutor "Casca" (Fantasma)
+        # Se um admin atribuiu um instrutor que não existia, o sistema criou um perfil genérico (com UUID aleatório).
+        # Agora o usuário real surgiu do Supabase com o seu verdadeiro UUID (`user_id`).
+        fantasma = Profile.objects.filter(cpf=cpf).first()
+        transferir_turmas = False
+        
+        if fantasma:
+            if fantasma.email == f'pendente_{cpf}@escola.local':
+                transferir_turmas = True
+            else:
+                return Response({"detail": "CPF já está em uso."}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            profile = Profile.objects.create(
-                id=user_id,
-                cpf=cpf,
-                email=email,
-                telefone=telefone or None,
-                nome_completo=nome_completo,
-                nome_social=nome_social or None,
-                tipo_usuario=tipo_usuario,
-                dados_servidor=dados_servidor,
-                data_ultima_confirmacao=timezone.now().date()
-            )
+            with transaction.atomic():
+                if transferir_turmas:
+                    # Salvar as turmas onde ele era instrutor para re-atrelar
+                    from cursos.models import Turma
+                    turmas_afetadas = list(Turma.objects.filter(instrutor=fantasma))
+                    fantasma.delete() # Exclui a casca para liberar o CPF
+
+                profile = Profile.objects.create(
+                    id=user_id,
+                    cpf=cpf,
+                    email=email,
+                    telefone=telefone or None,
+                    nome_completo=nome_completo,
+                    nome_social=nome_social or None,
+                    tipo_usuario=tipo_usuario,
+                    dados_servidor=dados_servidor,
+                    data_ultima_confirmacao=timezone.now().date()
+                )
+
+                if transferir_turmas:
+                    # Reatribui as turmas ao novo perfil real
+                    for t in turmas_afetadas:
+                        t.instrutor = profile
+                        t.save()
+
         except Exception as exc:
             logger.error("Erro ao criar Profile para user_id=%s: %s", user_id, exc)
             return Response(
@@ -164,7 +205,7 @@ class MyProfileView(views.APIView):
         # Campos dentro do JSONField dados_servidor
         dados_servidor_atual = dict(profile.dados_servidor or {})
         ds_changed = False
-        for campo_ds in ("email_chefe", "secretaria"):
+        for campo_ds in ("cpf_chefe", "secretaria"):
             if campo_ds in request.data:
                 valor_ds = request.data[campo_ds]
                 dados_servidor_atual[campo_ds] = valor_ds if valor_ds != "" else None
@@ -259,18 +300,77 @@ class FotoPerfilView(views.APIView):
             logger.error("Pillow processing error: %s", exc)
             return Response({"detail": "Erro ao processar a imagem."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        # Remove foto anterior do storage
+        # Persiste no storage (R2) primeiro para garantir atomicidade de rede
         profile = request.user
-        if profile.foto_perfil:
-            try:
-                profile.foto_perfil.delete(save=False)
-            except Exception:
-                pass  # Não interrompe o fluxo se a deleção no R2 falhar
-
-        # Persiste no storage (R2)
-        # IMPORTANTE: upload_to='fotos_perfil/' no ImageField já define o prefixo do diretório.
-        # O nome passado ao .save() deve ser APENAS o filename, sem repetir o prefixo.
+        old_foto = profile.foto_perfil if profile.foto_perfil else None
+        
         nome = f"{profile.id}_{_uuid.uuid4().hex[:8]}.webp"
         profile.foto_perfil.save(nome, ContentFile(buffer.read()), save=True)
 
+        # Remove foto anterior do storage somente após salvar a nova
+        if old_foto and old_foto.name != profile.foto_perfil.name:
+            try:
+                old_foto.delete(save=False)
+            except Exception:
+                pass  # Não interrompe o fluxo se a deleção no R2 falhar
+
         return Response({"foto_url": profile.foto_perfil.url}, status=status.HTTP_200_OK)
+
+class ListaInstrutoresView(generics.ListAPIView):
+    """ Retorna todos os usuários que são instrutores para o select do formulário """
+    serializer_class = ProfileSerializer
+    authentication_classes = [SupabaseJWTAuthentication]
+    permission_classes = [IsAuthenticated, IsAdminUser]
+
+    def get_queryset(self):
+        return Profile.objects.filter(tipo_usuario='INSTRUTOR', is_active=True).order_by('nome_completo')
+    
+class AdminUserListView(generics.ListAPIView):
+    """ GET: Retorna todos os usuários do sistema para o painel Admin """
+    serializer_class = ProfileSerializer
+    authentication_classes = [SupabaseJWTAuthentication]
+    permission_classes = [IsAuthenticated, IsAdminUser]
+
+    def get_queryset(self):
+        return Profile.objects.all().order_by('nome_completo')
+
+
+class AdminUserUpdateView(generics.UpdateAPIView):
+    """ PATCH: Permite ao Admin editar dados sensíveis (is_staff, is_active, tipo_usuario) """
+    serializer_class = ProfileSerializer
+    authentication_classes = [SupabaseJWTAuthentication]
+    permission_classes = [IsAuthenticated, IsAdminUser]
+    queryset = Profile.objects.all()
+
+
+class ToggleSolicitanteView(views.APIView):
+    """
+    PATCH /api/users/admin/usuarios/<uuid>/toggle-solicitante/
+    Ativa ou desativa a permissão de Solicitante de reservas para um usuário.
+    Retorna o novo estado do campo is_solicitante.
+    """
+    authentication_classes = [SupabaseJWTAuthentication]
+    permission_classes = [IsAuthenticated, IsAdminUser]
+
+    def patch(self, request, pk, *args, **kwargs):
+        try:
+            perfil = Profile.objects.get(pk=pk)
+        except Profile.DoesNotExist:
+            return Response({"detail": "Usuário não encontrado."}, status=status.HTTP_404_NOT_FOUND)
+
+        # Impede que o Admin retire a própria permissão de solicitante por engano
+        if perfil.pk == request.user.pk and perfil.is_solicitante:
+            return Response(
+                {"detail": "Não é possível remover sua própria permissão de Solicitante."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Inverte o estado atual
+        perfil.is_solicitante = not perfil.is_solicitante
+        perfil.save(update_fields=["is_solicitante", "atualizado_em"])
+
+        acao = "concedida" if perfil.is_solicitante else "removida"
+        return Response({
+            "is_solicitante": perfil.is_solicitante,
+            "detail": f"Permissão de Solicitante {acao} para {perfil.nome_completo}."
+        }, status=status.HTTP_200_OK)

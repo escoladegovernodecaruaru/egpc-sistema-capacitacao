@@ -5,6 +5,10 @@ from .views import (
     RegisterProfileView,
     MyProfileView,
     FotoPerfilView,
+    ListaInstrutoresView,
+    AdminUserListView,
+    AdminUserUpdateView,
+    ToggleSolicitanteView,
 )
 
 app_name = 'users'
@@ -24,4 +28,11 @@ urlpatterns = [
 
     # POST → upload e processamento de foto de perfil (multipart/form-data)
     path('auth/foto/', FotoPerfilView.as_view(), name='foto-perfil'),
+
+    path('instrutores/', ListaInstrutoresView.as_view(), name='lista-instrutores'),
+
+    # Rotas de Administração
+    path('admin/usuarios/', AdminUserListView.as_view(), name='admin-user-list'),
+    path('admin/usuarios/<uuid:pk>/', AdminUserUpdateView.as_view(), name='admin-user-update'),
+    path('admin/usuarios/<uuid:pk>/toggle-solicitante/', ToggleSolicitanteView.as_view(), name='toggle-solicitante'),
 ]

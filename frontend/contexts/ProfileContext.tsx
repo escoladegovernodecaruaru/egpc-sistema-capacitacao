@@ -44,6 +44,8 @@ export interface Profile {
   esta_bloqueado:           boolean;
   is_active:                boolean;
   is_staff:                 boolean;
+  is_solicitante:           boolean;
+  is_instrutor:             boolean;
   criado_em:                string;
 }
 

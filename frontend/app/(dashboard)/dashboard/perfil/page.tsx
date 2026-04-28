@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import Image from "next/image";
 import { fetchApi, type ApiError } from "@/lib/api";
-import { mascaraTelefone } from "@/lib/validations";
+import { mascaraTelefone, mascaraCPF, validarCPF } from "@/lib/validations";
 import { useProfile, type Profile } from "@/contexts/ProfileContext";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -200,7 +200,7 @@ export default function PerfilPage() {
       if (/[a-zA-Z@]/.test(initialCpfChefe)) {
         initialCpfChefe = "";
       } else if (initialCpfChefe) {
-        initialCpfChefe = require("@/lib/validations").mascaraCPF(initialCpfChefe);
+        initialCpfChefe = mascaraCPF(initialCpfChefe);
       }
       setCpfChefe(initialCpfChefe);
     }
@@ -208,8 +208,12 @@ export default function PerfilPage() {
 
   const handleSalvar = async () => {
     const cpfChefeLimpo = cpfChefe.replace(/\D/g, "");
-    if (cpfChefeLimpo && (cpfChefeLimpo.length !== 11 || !require("@/lib/validations").validarCPF(cpfChefeLimpo))) {
+    if (cpfChefeLimpo && (cpfChefeLimpo.length !== 11 || !validarCPF(cpfChefeLimpo))) {
       return toast.error("CPF da chefia inválido.");
+    }
+    // Impede que o usuário coloque o próprio CPF como chefia
+    if (cpfChefeLimpo && profile && cpfChefeLimpo === profile.cpf) {
+      return toast.error("O CPF da sua chefia não pode ser o seu próprio CPF.");
     }
 
     setIsSaving(true);
@@ -361,7 +365,7 @@ export default function PerfilPage() {
               onChange={setCpfChefe}
               type="text"
               placeholder="000.000.000-00"
-              mask={require("@/lib/validations").mascaraCPF}
+              mask={mascaraCPF}
             />
           </div>
         </motion.div>

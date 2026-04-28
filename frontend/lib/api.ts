@@ -68,6 +68,14 @@ export async function fetchApi<T = unknown>(
   }
 
   if (!response.ok) {
+    // Token expirado → força logout e redireciona para login
+    if (response.status === 401) {
+      await supabase.auth.signOut();
+      if (typeof window !== "undefined") {
+        window.location.href = "/login";
+      }
+    }
+
     const body = result as Record<string, unknown> | null;
     const err: ApiError = {
       status:  response.status,

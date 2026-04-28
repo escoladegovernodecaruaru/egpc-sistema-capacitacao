@@ -653,6 +653,14 @@ export default function RegistroPage() {
                 <FieldGroup label="CPF da Chefia Imediata">
                   <IconInput icon={User} type="text" inputMode="numeric" placeholder="000.000.000-00" value={form.cpf_chefe} onChange={(e: any) => set("cpf_chefe", mascaraCPF(e.target.value))} />
                   <p className="text-[12px] text-slate-500 mt-1">Por questões de privacidade (LGPD), o sistema não exibirá o nome da chefia. O vínculo será feito de forma segura.</p>
+                  <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} className="mt-2 p-2.5 rounded-lg bg-amber-50 border border-amber-200">
+                    <p className="text-[11px] font-bold text-amber-800 uppercase tracking-wide mb-0.5">Termo de Responsabilidade</p>
+                    <p className="text-[11px] text-amber-700 leading-relaxed text-left">
+                      Ao informar o CPF, você assume total responsabilidade pela exatidão do dado de sua chefia imediata. 
+                      O uso de dados falsos ou incorretos resultará em responsabilização administrativa.
+                      O credencial gerado é intransferível.
+                    </p>
+                  </motion.div>
                 </FieldGroup>
                 <button onClick={() => {
                   const cpfChefeLimpo = form.cpf_chefe.replace(/\D/g, "");

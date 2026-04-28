@@ -19,6 +19,7 @@ class ProfileSerializer(serializers.ModelSerializer):
     cpf_chefe    = serializers.SerializerMethodField()
     # URL absoluta da foto de perfil (None se não houver)
     foto_perfil_url = serializers.SerializerMethodField()
+    is_instrutor = serializers.SerializerMethodField()
 
     class Meta:
         model = Profile
@@ -35,14 +36,14 @@ class ProfileSerializer(serializers.ModelSerializer):
             "foto_perfil_url",
             # Regras EGPC
             "esta_de_licenca", "bloqueado_ate", "data_ultima_confirmacao",
-            "esta_bloqueado",
+            "esta_bloqueado", "is_solicitante", "is_instrutor",
             # Metadata
             "is_active", "is_staff", "criado_em",
         ]
         read_only_fields = [
             "id", "cpf", "esta_bloqueado", "tipo_usuario_display",
             "secretaria", "matricula", "empresa", "cpf_chefe",
-            "foto_perfil_url", "criado_em",
+            "foto_perfil_url", "criado_em", "is_instrutor",
         ]
 
     def get_esta_bloqueado(self, obj: Profile) -> bool:
@@ -72,3 +73,9 @@ class ProfileSerializer(serializers.ModelSerializer):
             except Exception:
                 return None
         return None
+    
+    def get_is_instrutor(self, obj) -> bool:
+        if obj.tipo_usuario == 'INSTRUTOR':
+            return True
+        from cursos.models import Turma
+        return Turma.objects.filter(instrutor=obj).exists()

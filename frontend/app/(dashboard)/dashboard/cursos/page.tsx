@@ -8,6 +8,7 @@ import CursoCard from "@/components/cursos/CursoCard";
 import CursoCardSkeleton from "@/components/cursos/CursoCardSkeleton";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
+import { EIXO_LABEL, TIPO_CURSO_LABEL, STATUS_TURMA_LABEL, label } from "@/lib/labels";
 
 // ─── FILTROS ───────────────────────────────────────────────────────────────
 const FILTROS: { value: StatusTurma | "TODOS"; label: string }[] = [
@@ -238,13 +239,13 @@ export default function CursosPage() {
                            {cursoSelecionado.codigo_oficial || "EGPC"}
                         </span>
                         <span className="bg-slate-100 px-3 py-1 rounded-full text-xs font-bold text-slate-600">
-                           {cursoSelecionado.tipo === "CENTRALIZADO" ? "Centralizado" : "Descentralizado"}
+                           {label(TIPO_CURSO_LABEL, cursoSelecionado.tipo)}
                         </span>
                         <span className="bg-slate-100 px-3 py-1 rounded-full text-xs font-bold text-slate-600">
-                           {cursoSelecionado.eixo === 'GESTAO_PUBLICA' ? 'Gestão Pública' : cursoSelecionado.eixo}
+                           {label(EIXO_LABEL, cursoSelecionado.eixo)}
                         </span>
                         <span className="bg-slate-100 px-3 py-1 rounded-full text-xs font-bold text-slate-600">
-                           {cursoSelecionado.status_geral}
+                           {label(STATUS_TURMA_LABEL, cursoSelecionado.status_geral)}
                         </span>
                      </div>
 
