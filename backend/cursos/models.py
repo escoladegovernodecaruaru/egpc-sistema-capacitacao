@@ -107,7 +107,7 @@ class Turma(models.Model):
     STATUS_MANUAIS = {Status.FINALIZADA, Status.ADIADA, Status.CANCELADA}
 
     curso = models.ForeignKey(Curso, on_delete=models.CASCADE, related_name='turmas', verbose_name="Curso")
-    letra = models.CharField(max_length=3, verbose_name="Letra da Turma")
+    letra = models.CharField(max_length=5, blank=True, verbose_name="Letra da Turma")
     modalidade = models.CharField(
         max_length=20, 
         choices=Modalidade.choices, 
@@ -125,6 +125,17 @@ class Turma(models.Model):
         choices=Visibilidade.choices, 
         default=Visibilidade.PUBLICA,
         verbose_name="Visibilidade da Turma"
+    )
+    apenas_cadastro_manual = models.BooleanField(
+        default=False, 
+        verbose_name="Apenas Matrícula Manual",
+        help_text="Se ativo, o aluno não consegue se inscrever sozinho."
+    )
+    vinculos_permitidos = models.JSONField(
+        default=list, 
+        blank=True, 
+        verbose_name="Vínculos Permitidos",
+        help_text="Lista de tipos de usuário. Ex: ['SERVIDOR_ATIVO', 'ESTAGIARIO']. Vazio = todos."
     )
     vagas = models.PositiveIntegerField(default=30, verbose_name="Nº de Vagas")
     custo = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name="Custo (R$)")
@@ -187,6 +198,30 @@ class Turma(models.Model):
     def __str__(self):
         return self.codigo_turma
 
+    def _gerar_proxima_letra(self):
+        """Calcula a próxima letra da turma para o curso atual (A, B, C... Z, AA, AB...)"""
+        ultima = Turma.objects.filter(curso=self.curso).order_by('id').last()
+        if not ultima or not ultima.letra:
+            return 'A'
+        
+        letra = ultima.letra
+        if len(letra) == 1:
+            if letra == 'Z':
+                return 'AA'
+            return chr(ord(letra) + 1)
+        else:
+            # Lógica simples para turmas além do Z (ex: AA -> AB)
+            prefixo = letra[:-1]
+            sufixo = letra[-1]
+            if sufixo == 'Z':
+                return prefixo + 'A' + 'A' # Simplificação
+            return prefixo + chr(ord(sufixo) + 1)
+
+    def save(self, *args, **kwargs):
+        if not self.letra:
+            self.letra = self._gerar_proxima_letra()
+        super().save(*args, **kwargs)
+
 class TurmaGestor(models.Model):
     turma = models.ForeignKey(Turma, on_delete=models.CASCADE, related_name='gestores_associados')
     gestor = models.ForeignKey('users.Profile', on_delete=models.CASCADE, related_name='turmas_gerenciadas')
@@ -226,6 +261,7 @@ class EventoTurma(models.Model):
         SALA_2 = 'SALA_2', _('Sala de Aula 2 - 5º andar (33 vagas)')
         AUDITORIO = 'AUDITORIO', _('Auditório - 5º andar (60 vagas)')
         EXTERNO = 'EXTERNO', _('Espaço Externo / Outros')
+        ONLINE = 'ONLINE', _('Ambiente Virtual / EAD')
 
     class TurnoBloqueio(models.TextChoices):
         MANHA = 'MANHA', _('Manhã (08h às 12h)')
@@ -274,7 +310,7 @@ class EventoTurma(models.Model):
         else:
             self.turno_reserva = self.TurnoBloqueio.NOITE
 
-        if self.espaco != self.EspacoEscola.EXTERNO:
+        if self.espaco not in [self.EspacoEscola.EXTERNO, self.EspacoEscola.ONLINE]:
             from django.db import IntegrityError
 
             # Calcula todos os turnos que este evento ocupa (pode ser 1 ou 2)
@@ -341,6 +377,7 @@ class Inscricao(models.Model):
         PENDENTE = 'pendente', _('Pendente')
         APROVADO_CHEFIA = 'aprovado_chefia', _('Aprovado pela Chefia')
         INSCRITO = 'inscrito', _('Inscrito')
+        FILA_ESPERA = 'fila_espera', _('Fila de Espera')
         CONCLUIDO = 'concluido', _('Concluído')
         REPROVADO = 'reprovado', _('Reprovado')
         CANCELADO = 'cancelado', _('Cancelado')
@@ -377,7 +414,10 @@ class Inscricao(models.Model):
                     .count()
                 )
                 if vagas_ocupadas >= self.turma.vagas:
-                    raise ValidationError(f"Turma sem vagas disponíveis ({vagas_ocupadas}/{self.turma.vagas}).")
+                    # Se não há vagas, automaticamente vai para a fila de espera
+                    # Salvo se o usuário for do tipo que requer aprovação de chefia e já vai para pendente
+                    # Mas para não complicar: a fila de espera resolve o limite físico da turma.
+                    self.status = self.Status.FILA_ESPERA
                 super().save(*args, **kwargs)
         else:
             super().save(*args, **kwargs)
@@ -562,6 +602,16 @@ class Modulo(models.Model):
     ordem = models.PositiveIntegerField(default=0, verbose_name="Ordem de Exibição")
     is_active = models.BooleanField(default=True, verbose_name="Ativo")
 
+    # ── PRÉ-REQUISITO: Módulo só aparece ao aluno após conclusão de outra atividade ──
+    atividade_pre_requisito = models.ForeignKey(
+        'Atividade',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='desbloqueia_modulos',
+        verbose_name="Atividade Pré-requisito",
+        help_text="Este módulo só será exibido ao aluno após conclusão da atividade selecionada."
+    )
+
     class Meta:
         db_table = 'lms_modulos'
         verbose_name = 'Módulo'
@@ -573,31 +623,43 @@ class Modulo(models.Model):
 
 
 class Atividade(models.Model):
-    """ O conteúdo em si: Vídeo do YouTube, Texto, ou Arquivo """
+    """ O conteúdo em si: Vídeo do YouTube, Texto, Questionário ou Tarefa """
     class Tipo(models.TextChoices):
         VIDEO_YOUTUBE = 'VIDEO_YOUTUBE', _('Vídeo (YouTube)')
         LEITURA = 'LEITURA', _('Material de Leitura / Link')
         TAREFA = 'TAREFA', _('Tarefa Prática')
+        QUESTIONARIO = 'QUESTIONARIO', _('Questionário Avaliativo')
 
     modulo = models.ForeignKey(Modulo, on_delete=models.CASCADE, related_name='atividades')
     titulo = models.CharField(max_length=255, verbose_name="Título da Atividade")
     descricao = models.TextField(blank=True, null=True, verbose_name="Instruções / Texto")
     tipo = models.CharField(max_length=20, choices=Tipo.choices, default=Tipo.VIDEO_YOUTUBE)
-
     url_video = models.URLField(blank=True, null=True, verbose_name="Link do YouTube")
-    carga_horaria_recompensa = models.PositiveIntegerField(
-        default=0,
-        verbose_name="Carga Horária (Recompensa)",
-        help_text="Quantas horas o aluno ganha ao concluir esta atividade?"
-    )
     ordem = models.PositiveIntegerField(default=0)
     is_active = models.BooleanField(default=True, verbose_name="Ativo")
 
-    # ── CONTROLE DE CARGA HORÁRIA: aprovação pelo Admin ──────────────────────
+    # ── DRIP CONTENT: Liberação por data/hora ────────────────────────────────
+    data_liberacao = models.DateTimeField(
+        null=True, blank=True,
+        verbose_name="Data/Hora de Liberação",
+        help_text="Se preenchido, a atividade só será visível para o aluno após esta data e hora."
+    )
+
+    # ── TRILHA CONDICIONAL: Pré-requisito de atividade ────────────────────────
+    atividade_pre_requisito = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='atividades_dependentes',
+        verbose_name="Atividade Pré-requisito",
+        help_text="O aluno só verá esta atividade após concluir a atividade selecionada."
+    )
+
+    # ── APROVAÇÃO ADMIN (mantido para compatibilidade, sem gerar CH) ──────────
     aprovado_admin = models.BooleanField(
         default=False,
-        verbose_name="Aprovado pelo Admin",
-        help_text="Atividades EAD/Híbrido só somam carga horária após aprovação do administrador."
+        verbose_name="Visível para Alunos",
+        help_text="Atividade só aparece para alunos após aprovação do administrador/instrutor."
     )
     aprovado_por = models.ForeignKey(
         'users.Profile',
@@ -624,6 +686,7 @@ class ProgressoAtividade(models.Model):
     atividade = models.ForeignKey(Atividade, on_delete=models.CASCADE, related_name='conclusoes')
     concluido = models.BooleanField(default=True)
     data_conclusao = models.DateTimeField(auto_now_add=True)
+    nota_obtida = models.DecimalField(max_digits=4, decimal_places=2, null=True, blank=True, verbose_name="Nota Normalizada (0 a 10)")
 
     class Meta:
         db_table = 'lms_progresso_alunos'
@@ -639,6 +702,100 @@ class ProgressoSessaoEAD(models.Model):
         db_table = 'lms_progresso_sessoes_ead'
         ordering = ['-timestamp_ping']
 
+
+# ==========================================
+# LMS - QUESTIONÁRIOS
+# ==========================================
+
+class Questionario(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    atividade = models.OneToOneField(Atividade, on_delete=models.CASCADE, related_name='questionario')
+    titulo = models.CharField(max_length=255)
+    descricao = models.TextField(blank=True, null=True)
+    tentativas_permitidas = models.IntegerField(default=1)
+    tempo_limite_minutos = models.IntegerField(default=0, help_text="0 significa sem tempo limite")
+    nota_minima_aprovacao = models.DecimalField(max_digits=5, decimal_places=2, default=70.00)
+
+    class Meta:
+        db_table = 'lms_questionarios'
+
+    def __str__(self):
+        return f"Questionário: {self.titulo}"
+
+class Questao(models.Model):
+    class TipoQuestao(models.TextChoices):
+        MULTIPLA_ESCOLHA = 'MULTIPLA_ESCOLHA', _('Múltipla Escolha (1 correta)')
+        CAIXAS_SELECAO   = 'CAIXAS_SELECAO',   _('Caixas de Seleção (várias corretas)')
+        DISSERTATIVA     = 'DISSERTATIVA',     _('Dissertativa (correção manual)')
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    questionario = models.ForeignKey(Questionario, on_delete=models.CASCADE, related_name='questoes')
+    enunciado = models.TextField()
+    tipo = models.CharField(
+        max_length=20,
+        choices=TipoQuestao.choices,
+        default=TipoQuestao.MULTIPLA_ESCOLHA,
+        verbose_name="Tipo de Questão"
+    )
+    ordem = models.IntegerField(default=0)
+    valor = models.DecimalField(max_digits=5, decimal_places=2, default=10.00)
+
+    class Meta:
+        db_table = 'lms_questoes'
+        ordering = ['ordem']
+
+    def __str__(self):
+        return f"Q{self.ordem} - {self.questionario.titulo}"
+
+class Opcao(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    questao = models.ForeignKey(Questao, on_delete=models.CASCADE, related_name='opcoes')
+    texto = models.TextField()
+    is_correta = models.BooleanField(default=False)
+    ordem = models.IntegerField(default=0)
+
+    class Meta:
+        db_table = 'lms_opcoes'
+        ordering = ['ordem']
+
+    def __str__(self):
+        return f"Opção: {self.texto[:30]}"
+
+class TentativaQuestionario(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    progresso = models.ForeignKey(ProgressoAtividade, on_delete=models.CASCADE, related_name='tentativas')
+    questionario = models.ForeignKey(Questionario, on_delete=models.CASCADE)
+    numero_tentativa = models.IntegerField(default=1)
+    inicio = models.DateTimeField(auto_now_add=True)
+    fim = models.DateTimeField(null=True, blank=True)
+    nota_obtida = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    finalizada = models.BooleanField(default=False)
+
+    class Meta:
+        db_table = 'lms_tentativas_questionario'
+
+class RespostaAluno(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tentativa = models.ForeignKey(TentativaQuestionario, on_delete=models.CASCADE, related_name='respostas', null=True, blank=True)
+    questao = models.ForeignKey(Questao, on_delete=models.CASCADE)
+    # Opção selecionada (null para dissertativas)
+    opcao_selecionada = models.ForeignKey(Opcao, on_delete=models.CASCADE, null=True, blank=True)
+    # Resposta textual (para questões dissertativas)
+    resposta_texto = models.TextField(null=True, blank=True, verbose_name="Resposta Dissertativa")
+    # Nota manual atribuída pelo instrutor (para dissertativas)
+    nota_manual = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True, verbose_name="Nota Manual (Instrutor)")
+    corrigida_por = models.ForeignKey(
+        'users.Profile', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='respostas_corrigidas', verbose_name="Corrigida por"
+    )
+    data_resposta = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'lms_respostas_alunos'
+        unique_together = ('tentativa', 'questao')
+
+    def __str__(self):
+        return f"Resp: {self.questao}"
 
 # ============================================================
 # MÓDULO DE AUDITORIA — HistoricoAlteracao

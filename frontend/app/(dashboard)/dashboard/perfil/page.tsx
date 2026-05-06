@@ -6,14 +6,17 @@ import {
   User, Mail, Phone, Building2, Briefcase,
   ShieldCheck, Calendar, ClipboardList,
   BadgeCheck, AlertTriangle, Loader2, Save,
-  Camera, CheckCircle2,
+  Camera, CheckCircle2, Flag, AlertCircle, Info
 } from "lucide-react";
 import Image from "next/image";
 import { fetchApi, type ApiError } from "@/lib/api";
 import { mascaraTelefone, mascaraCPF, validarCPF } from "@/lib/validations";
-import { useProfile, type Profile } from "@/contexts/ProfileContext";
+import { useProfile, type Profile, perfilCompleto } from "@/contexts/ProfileContext";
+import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+
+interface Secretaria { id: number; sigla: string; nome: string; }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -182,38 +185,63 @@ function AvatarUpload({
 
 export default function PerfilPage() {
   const { profile, isLoading, refreshProfile } = useProfile();
+  const searchParams = useSearchParams();
+  const isIncompleto = searchParams.get('incompleto') === '1';
+  const [secretarias, setSecretarias] = useState<Secretaria[]>([]);
+
+  useEffect(() => {
+    fetchApi<Secretaria[]>("/users/secretarias/", { requireAuth: false })
+      .then(data => setSecretarias(Array.isArray(data) ? data : []))
+      .catch(() => {});
+  }, []);
 
   const [isSaving, setIsSaving] = useState(false);
   const [saved,    setSaved]    = useState(false);
 
   const [nomeSocial,  setNomeSocial]  = useState("");
   const [telefone,    setTelefone]    = useState("");
-  const [cpfChefe,    setCpfChefe]    = useState("");
+  const [matricula,   setMatricula]   = useState("");
+  const [matriculaChefe, setMatriculaChefe] = useState("");
+  const [secretaria, setSecretaria] = useState("");
+
+  const [denunciaModalOpen, setDenunciaModalOpen] = useState(false);
+  const [matriculaDenuncia, setMatriculaDenuncia] = useState("");
+  const [enviandoDenuncia, setEnviandoDenuncia] = useState(false);
 
   useEffect(() => {
     if (profile) {
       setNomeSocial(profile.nome_social  || "");
       setTelefone(  profile.telefone     || "");
-      
-      let initialCpfChefe = profile.cpf_chefe || "";
-      // Tratamento de dados legados: se contiver letras ou @ (ex: email), ignora
-      if (/[a-zA-Z@]/.test(initialCpfChefe)) {
-        initialCpfChefe = "";
-      } else if (initialCpfChefe) {
-        initialCpfChefe = mascaraCPF(initialCpfChefe);
-      }
-      setCpfChefe(initialCpfChefe);
+      setMatricula(profile.matricula || "");
+      setMatriculaChefe(profile.matricula_chefe || "");
+      setSecretaria(profile.secretaria || "");
     }
   }, [profile]);
 
-  const handleSalvar = async () => {
-    const cpfChefeLimpo = cpfChefe.replace(/\D/g, "");
-    if (cpfChefeLimpo && (cpfChefeLimpo.length !== 11 || !validarCPF(cpfChefeLimpo))) {
-      return toast.error("CPF da chefia inválido.");
+  const handleDenunciar = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!matriculaDenuncia.trim()) return toast.error("Informe a matrícula.");
+    setEnviandoDenuncia(true);
+    try {
+      await fetchApi("/users/auth/denunciar-matricula/", {
+        method: "POST",
+        requireAuth: true,
+        body: JSON.stringify({ matricula: matriculaDenuncia })
+      });
+      toast.success("Denúncia enviada! Nossa equipe analisará o caso.");
+      setDenunciaModalOpen(false);
+      setMatriculaDenuncia("");
+    } catch (err: unknown) {
+      toast.error((err as ApiError).message || "Erro ao enviar denúncia.");
+    } finally {
+      setEnviandoDenuncia(false);
     }
-    // Impede que o usuário coloque o próprio CPF como chefia
-    if (cpfChefeLimpo && profile && cpfChefeLimpo === profile.cpf) {
-      return toast.error("O CPF da sua chefia não pode ser o seu próprio CPF.");
+  };
+
+const handleSalvar = async () => {
+    // Impede que o usuário coloque a própria matrícula como chefia
+    if (matriculaChefe && profile && matriculaChefe === profile.matricula) {
+      return toast.error("A matrícula da sua chefia não pode ser a sua própria matrícula.");
     }
 
     setIsSaving(true);
@@ -223,9 +251,11 @@ export default function PerfilPage() {
         method:      "PATCH",
         requireAuth: true,
         body: JSON.stringify({
-          nome_social:  nomeSocial  || null,
-          telefone:     telefone.replace(/\D/g, "") || null,
-          cpf_chefe:    cpfChefeLimpo || null,
+          nome_social:     nomeSocial  || null,
+          telefone:        telefone.replace(/\D/g, "") || null,
+          matricula:       matricula || null,
+          matricula_chefe: matriculaChefe || null,
+          secretaria:      secretaria || null,
         }),
       });
       await refreshProfile();
@@ -243,7 +273,9 @@ export default function PerfilPage() {
   const temAlteracoes =
     nomeSocial !== (profile?.nome_social  || "") ||
     telefone   !== (profile?.telefone     || "") ||
-    cpfChefe   !== (profile?.cpf_chefe    || "");
+    matricula  !== (profile?.matricula || "") ||
+    matriculaChefe !== (profile?.matricula_chefe || "") ||
+    secretaria !== (profile?.secretaria || "");
 
   if (isLoading) {
     return (
@@ -261,6 +293,35 @@ export default function PerfilPage() {
 
   return (
     <div className="max-w-3xl mx-auto space-y-6 pb-20">
+
+      {/* ── Banner de perfil INCOMPLETO (vermelho, chamativo) ──────────────── */}
+      {(isIncompleto || (profile && !perfilCompleto(profile))) && (
+        <motion.div
+          initial={{ opacity: 0, scale: 0.97 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="flex items-start gap-4 bg-red-600 text-white rounded-2xl p-5 shadow-lg border border-red-700"
+        >
+          <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center shrink-0">
+            <AlertCircle className="w-6 h-6" />
+          </div>
+          <div>
+            <p className="font-black text-[15px] uppercase tracking-wide">Perfil Incompleto — Acesso Restrito</p>
+            <p className="text-[13px] text-red-100 mt-1 leading-relaxed">
+              Para acessar os cursos e todos os recursos do portal, preencha os campos obrigatórios:
+              <strong className="text-white"> matrícula funcional, matrícula da chefia e secretaria/setor</strong>.
+            </p>
+          </div>
+        </motion.div>
+      )}
+
+      {/* ── Aviso amarelo: dados cadastrais ──────────────────────────── */}
+      <div className="flex items-start gap-3 bg-amber-50 border border-amber-300 rounded-xl p-4">
+        <Info className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+        <p className="text-[13px] text-amber-800 leading-relaxed">
+          Para alterar dados cadastrais (nome, CPF, e-mail ou data de nascimento), entre em contato com a
+          <strong> Escola de Governo de Caruaru</strong> pessoalmente ou pelo canal oficial de atendimento.
+        </p>
+      </div>
 
       {/* ── Cabeçalho ──────────────────────────────────────────────── */}
       <motion.div
@@ -313,9 +374,14 @@ export default function PerfilPage() {
           <ReadField label="Nome completo" value={profile.nome_completo} />
           <ReadField label="CPF"           value={formatCpf(profile.cpf)} mono />
           <ReadField label="E-mail"        value={profile.email} />
+          <ReadField label="Data de Nascimento" value={profile.data_nascimento ? new Date(profile.data_nascimento + 'T00:00:00').toLocaleDateString('pt-BR') : undefined} />
           <ReadField label="Membro desde"  value={formatDate(profile.criado_em)} />
         </div>
+        <p className="text-[11px] text-slate-400 mt-4 border-t border-slate-100 pt-3">
+          ⚠️ Nome, CPF, E-mail e Data de Nascimento só podem ser alterados mediante solicitação formal à Escola de Governo.
+        </p>
       </motion.div>
+
 
       {/* ── Campos editáveis ────────────────────────────────────────── */}
       <motion.div
@@ -353,28 +419,83 @@ export default function PerfilPage() {
           <SectionTitle icon={Building2} title="Dados Institucionais" />
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
             {profile.tipo_usuario === "SERVIDOR_ATIVO" && (
-              <ReadField label="Matrícula funcional" value={profile.matricula} mono />
+              <div className="relative">
+                <EditField
+                  label="Sua Matrícula Funcional"
+                  value={matricula}
+                  onChange={setMatricula}
+                  type="text"
+                  placeholder="Sua matrícula no RH"
+                />
+                <button 
+                  type="button" 
+                  onClick={() => setDenunciaModalOpen(true)}
+                  className="absolute -bottom-6 left-0 text-[10px] font-bold text-red-500 hover:text-red-700 flex items-center gap-1"
+                >
+                  <Flag className="w-3 h-3" /> Matrícula em uso por outro? Denunciar.
+                </button>
+              </div>
             )}
             {(profile.tipo_usuario === "TERCEIRIZADO" || profile.tipo_usuario === "ESTAGIARIO") && (
               <ReadField label="Empresa / Órgão" value={profile.empresa} />
             )}
-            <ReadField label="Secretaria / Setor" value={profile.secretaria} />
-            <EditField
-              label="CPF da chefia imediata"
-              value={cpfChefe}
-              onChange={setCpfChefe}
-              type="text"
-              placeholder="000.000.000-00"
-              mask={mascaraCPF}
-            />
+
+            {/* Aviso de crime de matrícula (servidor) */}
+            {profile.tipo_usuario === "SERVIDOR_ATIVO" && (
+              <div className="flex items-start gap-2 p-3 rounded-xl bg-red-50 border border-red-200">
+                <AlertTriangle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                <p className="text-[11px] text-red-700 leading-relaxed">
+                  <strong>Aviso Legal:</strong> Utilizar a matrícula funcional de outra pessoa para obter benefícios
+                  constitui <strong>crime de falsidade ideológica</strong> (Art. 299 CP), sujeito a 1 a 5 anos de reclusão.
+                </p>
+              </div>
+            )}
+
+            {/* Secretaria como dropdown editável */}
+            <div className="sm:col-span-2 space-y-1.5">
+              <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Secretaria / Setor</label>
+              <div className="relative">
+                <Building2 className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none" />
+                <select
+                  value={secretaria}
+                  onChange={e => setSecretaria(e.target.value)}
+                  className="input-light pl-11 w-full"
+                >
+                  <option value="">Selecione a secretaria...</option>
+                  {secretarias.map(s => (
+                    <option key={s.id} value={`${s.sigla} - ${s.nome}`}>{s.sigla} — {s.nome}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Matrícula da chefia + aviso de crime */}
+            <div className="sm:col-span-2 space-y-3">
+              <EditField
+                label="Matrícula da chefia imediata"
+                value={matriculaChefe}
+                onChange={setMatriculaChefe}
+                type="text"
+                placeholder="Digite a matrícula da sua chefia"
+              />
+              <div className="flex items-start gap-2 p-3 rounded-xl bg-red-50 border border-red-200">
+                <AlertTriangle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                <p className="text-[11px] text-red-700 leading-relaxed">
+                  <strong>Aviso Legal:</strong> Informar matrícula alheia para obter benefícios constitui
+                  <strong> crime de falsidade ideológica</strong> (Art. 299 CP), sujeito a pena de 1 a 5 anos de reclusão.
+                </p>
+              </div>
+            </div>
           </div>
         </motion.div>
       )}
 
+
+
       {/* ── Situação ────────────────────────────────────────────────── */}
       <motion.div
         initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
+        animate={{ opacity: 1, y: 0 }} 
         transition={{ delay: 0.20 }}
         className="clean-card p-6 md:p-8"
       >
@@ -442,6 +563,65 @@ export default function PerfilPage() {
         <ClipboardList className="w-4 h-4 text-slate-400 flex-shrink-0" />
         <p className="text-[12px] text-slate-500 font-mono font-bold truncate">Registro Único Institucional: {profile.id}</p>
       </motion.div>
+
+      {/* Modal de Denúncia */}
+      <AnimatePresence>
+        {denunciaModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl border border-slate-100"
+            >
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+                  <Flag className="w-5 h-5 text-red-600" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-slate-800 leading-tight">Denunciar Uso Indevido</h3>
+                  <p className="text-xs text-slate-500">Alguém usou sua matrícula?</p>
+                </div>
+              </div>
+              
+              <form onSubmit={handleDenunciar}>
+                <p className="text-sm text-slate-600 mb-4">
+                  Se você tentou atualizar sua matrícula e o sistema acusou que ela já está em uso, informe-a abaixo para que nossa equipe analise.
+                </p>
+                <div className="mb-6">
+                  <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1 block">Matrícula</label>
+                  <input
+                    type="text"
+                    required
+                    value={matriculaDenuncia}
+                    onChange={e => setMatriculaDenuncia(e.target.value)}
+                    placeholder="Ex: 12345"
+                    className="input-light w-full border-red-200 focus:border-red-500 focus:ring-red-500/20"
+                  />
+                </div>
+                
+                <div className="flex items-center justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setDenunciaModalOpen(false)}
+                    className="px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={enviandoDenuncia}
+                    className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-lg shadow-md transition-colors flex items-center gap-2"
+                  >
+                    {enviandoDenuncia ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                    Enviar Denúncia
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
     </div>
   );

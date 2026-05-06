@@ -1,11 +1,13 @@
 from rest_framework import serializers
-from .models import Curso, Turma, EventoTurma, Inscricao, SolicitacaoReserva, ItemReserva, Modulo, Atividade, ProgressoAtividade
+from .models import Curso, Turma, EventoTurma, Inscricao, SolicitacaoReserva, ItemReserva, Modulo, Atividade, ProgressoAtividade, Questionario, Questao, Opcao
 from users.serializers import ProfileSerializer
+from django.db import transaction, IntegrityError
 
 class EventoTurmaSerializer(serializers.ModelSerializer):
     class Meta:
         model = EventoTurma
         fields = ['id', 'data', 'hora_inicio', 'hora_fim', 'espaco', 'espaco_externo_nome', 'turno_reserva']
+
 
 class TurmaSerializer(serializers.ModelSerializer):
     instrutor_nome = serializers.CharField(source='instrutor.nome_completo', read_only=True)
@@ -13,6 +15,7 @@ class TurmaSerializer(serializers.ModelSerializer):
     status = serializers.CharField(source='status_calculado', read_only=True)
     eventos = EventoTurmaSerializer(many=True, required=False)
     vagas_restantes = serializers.SerializerMethodField()
+    letra = serializers.CharField(read_only=True)
     
     # Campo virtual para receber o CPF do front-end
     instrutor_cpf = serializers.CharField(write_only=True, required=False, allow_blank=True, allow_null=True)
@@ -25,9 +28,11 @@ class TurmaSerializer(serializers.ModelSerializer):
     class Meta:
         model = Turma
         fields = [
-            'id', 'curso', 'codigo', 'letra', 'modalidade', 'visibilidade', 'gestores_permitidos',
-            'data_inicio', 'data_fim', 'carga_horaria', 'vagas', 'custo', 'instrutor', 
-            'instrutor_nome', 'instrutor_cpf', 'status', 'eventos', 'vagas_restantes'
+            'id', 'curso', 'codigo', 'letra', 'modalidade', 'visibilidade',
+            'vinculos_permitidos', 'apenas_cadastro_manual',
+            'gestores_permitidos', 'data_inicio', 'data_fim', 'carga_horaria',
+            'vagas', 'custo', 'instrutor', 'instrutor_nome', 'instrutor_cpf',
+            'status', 'eventos', 'vagas_restantes'
         ]
 
     def to_representation(self, instance):
@@ -74,27 +79,35 @@ class TurmaSerializer(serializers.ModelSerializer):
                 )
                 validated_data['instrutor'] = instrutor
 
-        turma = Turma.objects.create(**validated_data)
-        
-        for evento_data in eventos_data:
-            EventoTurma.objects.create(turma=turma, **evento_data)
-            
-        from cursos.models import TurmaGestor
-        from users.models import Profile
-        for gestor_cpf in gestores_dados:
-             perfil = Profile.objects.filter(cpf=gestor_cpf).first()
-             if perfil:
-                 TurmaGestor.objects.get_or_create(turma=turma, gestor=perfil)
-            
-        return turma
+        # ── A BOLHA DE PROTEÇÃO (ATOMIC) ──
+        try:
+            with transaction.atomic():
+                turma = Turma.objects.create(**validated_data)
+                
+                for evento_data in eventos_data:
+                    EventoTurma.objects.create(turma=turma, **evento_data)
+                    
+                from cursos.models import TurmaGestor
+                from users.models import Profile
+                
+                for gestor_cpf in gestores_dados:
+                    perfil = Profile.objects.filter(cpf=gestor_cpf).first()
+                    if perfil:
+                        TurmaGestor.objects.get_or_create(turma=turma, gestor=perfil)
+                
+                return turma
+                
+        except IntegrityError:
+            # Transforma a quebra do banco (ex: sala ocupada) em um erro 400 amigável
+            raise serializers.ValidationError({
+                "detail": "Conflito de agenda. Um ou mais espaços selecionados já estão ocupados neste horário."
+            })
 
     def update(self, instance, validated_data):
         gestores_dados = validated_data.pop('gestores_permitidos', None)
-        
         eventos_data = validated_data.pop('eventos', None)
-        # O EventoTurma e afins devem ser manuseados separadamente ou via outro endpoint
-        # Vamos apenas focar no update da Turma em si.
         instrutor_cpf = validated_data.pop('instrutor_cpf', None)
+        
         if instrutor_cpf:
             import re
             from users.models import Profile
@@ -111,30 +124,39 @@ class TurmaSerializer(serializers.ModelSerializer):
                 )
                 validated_data['instrutor'] = instrutor
 
-        # Salva dados básicos da Turma
-        for attr, value in validated_data.items():
-            setattr(instance, attr, value)
-        instance.save()
+        # ── A BOLHA DE PROTEÇÃO NO UPDATE ──
+        try:
+            with transaction.atomic():
+                # Salva dados básicos da Turma
+                for attr, value in validated_data.items():
+                    setattr(instance, attr, value)
+                instance.save()
 
-        # Update M2M dos gestores
-        if gestores_dados is not None:
-            from cursos.models import TurmaGestor
-            from users.models import Profile
-            
-            # Limpa e recria associações
-            instance.gestores_associados.all().delete()
-            for gestor_cpf in gestores_dados:
-                perfil = Profile.objects.filter(cpf=gestor_cpf).first()
-                if perfil:
-                    TurmaGestor.objects.create(turma=instance, gestor=perfil)
-        
-        return instance
+                # Update M2M dos gestores
+                if gestores_dados is not None:
+                    from cursos.models import TurmaGestor
+                    from users.models import Profile
+                    
+                    # Limpa e recria associações
+                    instance.gestores_associados.all().delete()
+                    for gestor_cpf in gestores_dados:
+                        perfil = Profile.objects.filter(cpf=gestor_cpf).first()
+                        if perfil:
+                            TurmaGestor.objects.create(turma=instance, gestor=perfil)
+                
+                return instance
+                
+        except IntegrityError:
+            raise serializers.ValidationError({
+                "detail": "Erro de integridade ao atualizar a turma."
+            })
 
 class InscricaoDetailSerializer(serializers.ModelSerializer):
     perfil = ProfileSerializer(read_only=True)
     turma = TurmaSerializer(read_only=True)
     curso = serializers.SerializerMethodField()
     is_urgente = serializers.SerializerMethodField()
+    presencas = serializers.SerializerMethodField()
     
     titulo_curso = serializers.CharField(source='turma.curso.titulo', read_only=True)
     codigo_turma = serializers.CharField(source='turma.codigo_turma', read_only=True)
@@ -173,6 +195,12 @@ class InscricaoDetailSerializer(serializers.ModelSerializer):
             "codigo_oficial": obj.turma.curso.codigo_oficial
         }
 
+    def get_presencas(self, obj):
+        """Retorna dict {str(evento_id): status} para exibir frequencia do aluno."""
+        from cursos.models import RegistroPresenca
+        registros = RegistroPresenca.objects.filter(inscricao=obj).select_related('evento')
+        return {str(r.evento_id): r.status for r in registros}
+
 class CursoSerializer(serializers.ModelSerializer):
     turmas = serializers.SerializerMethodField()
 
@@ -185,7 +213,31 @@ class CursoSerializer(serializers.ModelSerializer):
     def get_turmas(self, obj):
         # Retorna apenas as turmas que estão ativas no sistema
         turmas_ativas = obj.turmas.filter(is_active=True)
-        return TurmaSerializer(turmas_ativas, many=True).data
+        
+        request = self.context.get('request')
+        
+        # Se for um usuário comum, aplicamos o filtro inteligente
+        if request and request.user.is_authenticated and not request.user.is_staff:
+            tipo_user = request.user.tipo_usuario
+            
+            turmas_filtradas = []
+            for t in turmas_ativas:
+                if t.visibilidade == 'RESTRITA':
+                    # Se a turma for privada, ela DEVE aparecer, mas APENAS SE 
+                    # o tipo do usuário estiver explicitamente na lista de vínculos permitidos.
+                    # (Se a lista for vazia, significa que é restrita para todos, então só admin vê).
+                    if t.vinculos_permitidos and tipo_user in t.vinculos_permitidos:
+                        turmas_filtradas.append(t)
+                else:
+                    # Se a turma for pública, ela aparece livremente se a lista de vínculos 
+                    # for vazia, OU se o usuário estiver dentro da lista.
+                    if not t.vinculos_permitidos or tipo_user in t.vinculos_permitidos:
+                        turmas_filtradas.append(t)
+                        
+            return TurmaSerializer(turmas_filtradas, many=True, context=self.context).data
+
+        # Se for admin (is_staff) ou não autenticado (fallback de segurança), retorna todas ativas
+        return TurmaSerializer(turmas_ativas, many=True, context=self.context).data
     
 
 class ItemReservaSerializer(serializers.ModelSerializer):
@@ -219,7 +271,7 @@ class AtividadeSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Atividade
-        fields = ['id', 'titulo', 'descricao', 'tipo', 'url_video', 'carga_horaria_recompensa', 'ordem', 'concluida']
+        fields = ['id', 'titulo', 'descricao', 'tipo', 'url_video', 'carga_horaria_recompensa', 'ordem', 'concluida', 'questionario_id']
 
     def get_concluida(self, obj):
         # Esse contexto será passado pela View
@@ -234,3 +286,54 @@ class ModuloSerializer(serializers.ModelSerializer):
     class Meta:
         model = Modulo
         fields = ['id', 'titulo', 'ordem', 'atividades']
+
+class OpcaoSerializer(serializers.ModelSerializer):
+    id = serializers.UUIDField(required=False)
+
+    class Meta:
+        model = Opcao
+        fields = ['id', 'texto', 'is_correta', 'ordem']
+
+class QuestaoSerializer(serializers.ModelSerializer):
+    id = serializers.UUIDField(required=False)
+    opcoes = OpcaoSerializer(many=True)
+
+    class Meta:
+        model = Questao
+        fields = ['id', 'enunciado', 'ordem', 'valor', 'opcoes']
+
+class QuestionarioSerializer(serializers.ModelSerializer):
+    questoes = QuestaoSerializer(many=True)
+
+    class Meta:
+        model = Questionario
+        fields = ['id', 'atividade', 'titulo', 'descricao', 'tentativas_permitidas', 'tempo_limite_minutos', 'nota_minima_aprovacao', 'questoes']
+
+    def create(self, validated_data):
+        questoes_data = validated_data.pop('questoes', [])
+        questionario = Questionario.objects.create(**validated_data)
+        for questao_data in questoes_data:
+            opcoes_data = questao_data.pop('opcoes', [])
+            questao = Questao.objects.create(questionario=questionario, **questao_data)
+            for opcao_data in opcoes_data:
+                Opcao.objects.create(questao=questao, **opcao_data)
+        return questionario
+
+    def update(self, instance, validated_data):
+        questoes_data = validated_data.pop('questoes', [])
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+
+        # Recriar as questões
+        instance.questoes.all().delete()
+
+        for questao_data in questoes_data:
+            opcoes_data = questao_data.pop('opcoes', [])
+            questao_data.pop('id', None)
+            questao = Questao.objects.create(questionario=instance, **questao_data)
+            for opcao_data in opcoes_data:
+                opcao_data.pop('id', None)
+                Opcao.objects.create(questao=questao, **opcao_data)
+
+        return instance

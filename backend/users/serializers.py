@@ -13,10 +13,10 @@ class ProfileSerializer(serializers.ModelSerializer):
         source="get_tipo_usuario_display", read_only=True
     )
     # Extrai campos mais usados do JSONField para facilitar o consumo no frontend
-    secretaria   = serializers.SerializerMethodField()
-    matricula    = serializers.SerializerMethodField()
-    empresa      = serializers.SerializerMethodField()
-    cpf_chefe    = serializers.SerializerMethodField()
+    secretaria      = serializers.SerializerMethodField()
+    matricula = serializers.SerializerMethodField()
+    empresa = serializers.SerializerMethodField()
+    matricula_chefe = serializers.SerializerMethodField()
     # URL absoluta da foto de perfil (None se não houver)
     foto_perfil_url = serializers.SerializerMethodField()
     is_instrutor = serializers.SerializerMethodField()
@@ -31,7 +31,7 @@ class ProfileSerializer(serializers.ModelSerializer):
             # Vínculo
             "tipo_usuario", "tipo_usuario_display",
             # Dados funcionais (raw + extraídos)
-            "dados_servidor", "secretaria", "matricula", "empresa", "cpf_chefe",
+            "dados_servidor", "secretaria", "matricula", "empresa", "matricula_chefe",
             # Foto de perfil
             "foto_perfil_url",
             # Regras EGPC
@@ -42,7 +42,7 @@ class ProfileSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             "id", "cpf", "esta_bloqueado", "tipo_usuario_display",
-            "secretaria", "matricula", "empresa", "cpf_chefe",
+            "secretaria", "matricula", "empresa", "matricula_chefe",
             "foto_perfil_url", "criado_em", "is_instrutor",
         ]
 
@@ -62,8 +62,8 @@ class ProfileSerializer(serializers.ModelSerializer):
     def get_empresa(self, obj):
         return self._ds(obj).get("empresa")
 
-    def get_cpf_chefe(self, obj):
-        return self._ds(obj).get("cpf_chefe")
+    def get_matricula_chefe(self, obj):
+        return self._ds(obj).get("matricula_chefe")
 
     def get_foto_perfil_url(self, obj) -> str | None:
         """Retorna a URL pública da foto ou None se não houver."""

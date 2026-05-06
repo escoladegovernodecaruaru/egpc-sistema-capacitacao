@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import { Users, Search, Filter, Edit, Shield, ShieldAlert, CheckCircle2, XCircle, Loader2, X, UserCog, Mail, Phone, Briefcase, ClipboardList, ToggleLeft, ToggleRight } from "lucide-react";
+import { Users, Search, Filter, Edit, Shield, ShieldAlert, CheckCircle2, XCircle, Loader2, X, UserCog, Mail, Phone, Briefcase, ClipboardList, ToggleLeft, ToggleRight, Building2, Plus, Trash2, Save } from "lucide-react";
 import { fetchApi } from "@/lib/api";
 import { useProfile } from "@/contexts/ProfileContext";
 import { toast } from "sonner";
@@ -23,6 +23,57 @@ export default function UsuariosPage() {
   const [userEdit, setUserEdit] = useState<any | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
+  // Gestão de Secretarias
+  const [secretarias, setSecretarias] = useState<any[]>([]);
+  const [aba, setAba] = useState<'usuarios' | 'secretarias'>('usuarios');
+  const [novaSecretaria, setNovaSecretaria] = useState({ sigla: '', nome: '' });
+  const [editandoSecretaria, setEditandoSecretaria] = useState<any | null>(null);
+  const [salvandoSec, setSalvandoSec] = useState(false);
+
+  const carregarSecretarias = async () => {
+    try {
+      const data = await fetchApi<any[]>('/users/secretarias/');
+      setSecretarias(Array.isArray(data) ? data : []);
+    } catch {}
+  };
+
+  const handleCriarSecretaria = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!novaSecretaria.sigla || !novaSecretaria.nome) return toast.error('Preencha sigla e nome.');
+    setSalvandoSec(true);
+    try {
+      await fetchApi('/users/secretarias/', { method: 'POST', body: JSON.stringify(novaSecretaria) });
+      toast.success('Secretaria criada!');
+      setNovaSecretaria({ sigla: '', nome: '' });
+      carregarSecretarias();
+    } catch (err: any) {
+      toast.error(err.message || 'Erro ao criar secretaria.');
+    } finally { setSalvandoSec(false); }
+  };
+
+  const handleSalvarSecretaria = async (sec: any) => {
+    setSalvandoSec(true);
+    try {
+      await fetchApi(`/users/secretarias/${sec.id}/`, { method: 'PATCH', body: JSON.stringify({ sigla: sec.sigla, nome: sec.nome }) });
+      toast.success('Secretaria atualizada!');
+      setEditandoSecretaria(null);
+      carregarSecretarias();
+    } catch (err: any) {
+      toast.error(err.message || 'Erro ao salvar.');
+    } finally { setSalvandoSec(false); }
+  };
+
+  const handleRemoverSecretaria = async (id: number) => {
+    if (!confirm('Desativar esta secretaria?')) return;
+    try {
+      await fetchApi(`/users/secretarias/${id}/`, { method: 'DELETE' });
+      toast.success('Secretaria desativada.');
+      carregarSecretarias();
+    } catch (err: any) {
+      toast.error(err.message || 'Erro.');
+    }
+  };
+
   const carregarUsuarios = async () => {
     setIsLoading(true);
     try {
@@ -38,6 +89,7 @@ export default function UsuariosPage() {
   useEffect(() => {
     if (profile?.is_staff) {
       carregarUsuarios();
+      carregarSecretarias();
     }
   }, [profile]);
 
@@ -56,9 +108,9 @@ export default function UsuariosPage() {
 
     setIsSaving(true);
     try {
-      const payload = {
+      const payload: any = {
         nome_completo: userEdit.nome_completo,
-        telefone: userEdit.telefone?.replace(/\D/g, "") || null,
+        email: userEdit.email,
         tipo_usuario: userEdit.tipo_usuario,
         is_staff: userEdit.is_staff,
         is_active: userEdit.is_active,
@@ -126,13 +178,73 @@ export default function UsuariosPage() {
             <p className="text-[13px] text-slate-500 mt-0.5">Controle de acessos, permissões e cadastro da comunidade.</p>
           </div>
         </div>
-        <div className="flex items-center gap-2 bg-slate-50 px-4 py-2 rounded-xl border border-slate-200">
-          <Shield className="w-4 h-4 text-indigo-500" />
-          <span className="text-[12px] font-bold text-slate-700 uppercase tracking-widest">Painel Admin</span>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setAba('usuarios')} className={`px-4 py-2 rounded-xl text-[13px] font-bold transition-colors ${ aba === 'usuarios' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200' }`}>
+            <Users className="w-4 h-4 inline mr-1" /> Usuários
+          </button>
+          <button onClick={() => setAba('secretarias')} className={`px-4 py-2 rounded-xl text-[13px] font-bold transition-colors ${ aba === 'secretarias' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200' }`}>
+            <Building2 className="w-4 h-4 inline mr-1" /> Secretarias
+          </button>
         </div>
       </div>
 
-      {/* ── FILTROS E BUSCA ── */}
+      {/* ── ABA: SECRETARIAS ── */}
+      {aba === 'secretarias' && (
+        <div className="clean-card p-6 bg-white space-y-6">
+          <div className="flex items-center gap-2 mb-2">
+            <Building2 className="w-5 h-5 text-indigo-600" />
+            <h2 className="text-lg font-bold text-slate-800">Gerenciar Secretarias</h2>
+          </div>
+          {/* Formulário de criação */}
+          <form onSubmit={handleCriarSecretaria} className="flex flex-col sm:flex-row gap-3 p-4 bg-slate-50 rounded-xl border border-slate-200">
+            <input
+              maxLength={15}
+              placeholder="Sigla (ex: SAD)"
+              value={novaSecretaria.sigla}
+              onChange={e => setNovaSecretaria(p => ({ ...p, sigla: e.target.value.toUpperCase() }))}
+              className="input-light w-32 font-mono font-bold uppercase"
+            />
+            <input
+              placeholder="Nome completo da secretaria"
+              value={novaSecretaria.nome}
+              onChange={e => setNovaSecretaria(p => ({ ...p, nome: e.target.value }))}
+              className="input-light flex-1"
+            />
+            <button type="submit" disabled={salvandoSec} className="btn-primary px-6 flex items-center gap-2 shrink-0">
+              {salvandoSec ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Nova
+            </button>
+          </form>
+          {/* Lista */}
+          <div className="space-y-2">
+            {secretarias.length === 0 && <p className="text-slate-400 text-sm text-center py-6">Nenhuma secretaria cadastrada.</p>}
+            {secretarias.map(sec => (
+              <div key={sec.id} className="flex items-center gap-3 p-3 bg-white rounded-xl border border-slate-200">
+                {editandoSecretaria?.id === sec.id ? (
+                  <>
+                    <input maxLength={15} value={editandoSecretaria.sigla} onChange={e => setEditandoSecretaria((p: any) => ({ ...p, sigla: e.target.value.toUpperCase() }))} className="input-light w-28 font-mono font-bold uppercase text-sm" />
+                    <input value={editandoSecretaria.nome} onChange={e => setEditandoSecretaria((p: any) => ({ ...p, nome: e.target.value }))} className="input-light flex-1 text-sm" />
+                    <button onClick={() => handleSalvarSecretaria(editandoSecretaria)} disabled={salvandoSec} className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg">
+                      {salvandoSec ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                    </button>
+                    <button onClick={() => setEditandoSecretaria(null)} className="p-2 text-slate-400 hover:bg-slate-100 rounded-lg"><X className="w-4 h-4" /></button>
+                  </>
+                ) : (
+                  <>
+                    <span className="font-mono font-black text-indigo-700 text-sm w-16">{sec.sigla}</span>
+                    <span className="flex-1 text-sm text-slate-700">{sec.nome}</span>
+                    <button onClick={() => setEditandoSecretaria({ ...sec })} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg"><Edit className="w-4 h-4" /></button>
+                    <button onClick={() => handleRemoverSecretaria(sec.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg"><Trash2 className="w-4 h-4" /></button>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── ABA: USUARIOS (filtros e tabela) ── */}
+      {aba === 'usuarios' && (
+        <>
       <div className="clean-card p-5 bg-white flex flex-col md:flex-row gap-4 justify-between md:items-center">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -243,9 +355,11 @@ export default function UsuariosPage() {
                       </button>
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <button onClick={() => setUserEdit({...u})} className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors">
-                        <Edit className="w-5 h-5"/>
-                      </button>
+                      <div className="flex items-center justify-end gap-1">
+                        <button onClick={() => setUserEdit({...u})} title="Editar Usuário" className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors">
+                          <Edit className="w-5 h-5"/>
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -254,6 +368,9 @@ export default function UsuariosPage() {
           </table>
         </div>
       </div>
+
+      </>
+      )}
 
       {/* ── MODAL DE EDIÇÃO ── */}
       <AnimatePresence>
@@ -294,21 +411,19 @@ export default function UsuariosPage() {
                     <label className="form-label">Nome Completo</label>
                     <input type="text" value={userEdit.nome_completo} onChange={e => setUserEdit({...userEdit, nome_completo: e.target.value})} className="input-light" required />
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="form-label">Telefone</label>
-                      <input type="text" value={userEdit.telefone ? mascaraTelefone(userEdit.telefone) : ""} onChange={e => setUserEdit({...userEdit, telefone: e.target.value})} className="input-light" placeholder="(00) 00000-0000" />
-                    </div>
-                    <div>
-                      <label className="form-label">Vínculo (Tipo)</label>
-                      <select value={userEdit.tipo_usuario} onChange={e => setUserEdit({...userEdit, tipo_usuario: e.target.value})} className="input-light font-bold text-slate-700">
-                        <option value="CIDADAO">Cidadão</option>
-                        <option value="SERVIDOR_ATIVO">Servidor Ativo</option>
-                        <option value="TERCEIRIZADO">Terceirizado</option>
-                        <option value="ESTAGIARIO">Estagiário</option>
-                        <option value="INSTRUTOR">Instrutor Oficial</option>
-                      </select>
-                    </div>
+                  <div>
+                    <label className="form-label">E-mail</label>
+                    <input type="email" value={userEdit.email} onChange={e => setUserEdit({...userEdit, email: e.target.value})} className="input-light" required />
+                  </div>
+                  <div>
+                    <label className="form-label">Vínculo (Tipo)</label>
+                    <select value={userEdit.tipo_usuario} onChange={e => setUserEdit({...userEdit, tipo_usuario: e.target.value})} className="input-light font-bold text-slate-700">
+                      <option value="CIDADAO">Cidadão</option>
+                      <option value="SERVIDOR_ATIVO">Servidor Ativo</option>
+                      <option value="TERCEIRIZADO">Terceirizado</option>
+                      <option value="ESTAGIARIO">Estagiário</option>
+                      <option value="INSTRUTOR">Instrutor Oficial</option>
+                    </select>
                   </div>
                 </div>
 

@@ -1,9 +1,8 @@
 django>=4.2,<5.0
 django-environ
 djangorestframework
+djangorestframework-simplejwt
 django-cors-headers
-pyjwt
-python-jose[cryptography]
 requests
 psycopg2-binary
 boto3

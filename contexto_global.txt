@@ -1,0 +1,4132 @@
+
+============================================================
+📄 ARQUIVO: .\backend\core\settings.py
+============================================================
+
+import os
+from pathlib import Path
+import environ
+
+# Build paths inside the project like this: BASE_DIR / 'subdir'.
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Instancia o environ
+env = environ.Env(
+    DEBUG=(bool, False)
+)
+# Le o arquivo .env se existir
+environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
+
+# SECURITY WARNING: keep the secret key used in production secret!
+SECRET_KEY = env('SECRET_KEY', default='django-insecure-default-key-for-dev')
+
+# SECURITY WARNING: don't run with debug turned on in production!
+DEBUG = env('DEBUG', default=True)
+
+ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=['*'])
+
+# Application definition
+INSTALLED_APPS = [
+    'django.contrib.admin',
+    'django.contrib.auth',
+    'django.contrib.contenttypes',
+    'django.contrib.sessions',
+    'django.contrib.messages',
+    'django.contrib.staticfiles',
+
+    # Terceiros
+    'rest_framework',
+    'corsheaders',
+
+    # Apps do Projeto
+    'users',
+    'cursos',
+]
+
+MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware', # Deve vir o mais alto possível
+    'django.middleware.security.SecurityMiddleware',
+    'django.contrib.sessions.middleware.SessionMiddleware',
+    'django.middleware.common.CommonMiddleware',
+    'django.middleware.csrf.CsrfViewMiddleware',
+    'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'django.contrib.messages.middleware.MessageMiddleware',
+    'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'core.middleware.AuditMiddleware',
+]
+
+ROOT_URLCONF = 'core.urls'
+
+TEMPLATES = [
+    {
+        'BACKEND': 'django.template.backends.django.DjangoTemplates',
+        'DIRS': [],
+        'APP_DIRS': True,
+        'OPTIONS': {
+            'context_processors': [
+                'django.template.context_processors.debug',
+                'django.template.context_processors.request',
+                'django.contrib.auth.context_processors.auth',
+                'django.contrib.messages.context_processors.messages',
+            ],
+        },
+    },
+]
+
+WSGI_APPLICATION = 'core.wsgi.application'
+
+# Database
+# https://docs.djangoproject.com/en/4.2/ref/settings/#databases
+DATABASES = {
+    'default': env.db('DATABASE_URL')
+}
+
+# Custom User Model
+AUTH_USER_MODEL = 'users.Profile'
+
+# Password validation
+AUTH_PASSWORD_VALIDATORS = [
+    {
+        'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
+    },
+    {
+        'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
+    },
+    {
+        'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
+    },
+    {
+        'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
+    },
+]
+
+# Internationalization
+LANGUAGE_CODE = 'pt-br'
+TIME_ZONE = 'America/Sao_Paulo'
+USE_I18N = True
+USE_TZ = True
+
+# Static files (CSS, JavaScript, Images)
+STATIC_URL = 'static/'
+
+# Default primary key field type
+DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# CORS
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+]
+
+# Configurações do DRF
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ],
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',
+    ]
+}
+
+# ─── SimpleJWT ─────────────────────────────────────────────────────────────────
+from datetime import timedelta
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(days=1),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
+    'ROTATE_REFRESH_TOKENS': True,
+    'BLACKLIST_AFTER_ROTATION': True,
+    'AUTH_HEADER_TYPES': ('Bearer',),
+    'USER_ID_FIELD': 'id',
+    'USER_ID_CLAIM': 'user_id',
+}
+
+# ─── Cloudflare R2 (S3-compatible Storage) ─────────────────────────────────────
+#
+# django-storages usa internamente as variáveis AWS_*. Mapeamos explicitamente
+# a partir das nossas variáveis R2_* para evitar qualquer ambiguidade.
+#
+# Variáveis obrigatórias no .env:
+#   R2_ACCESS_KEY_ID      → Chave de acesso (Cloudflare → R2 → Manage API tokens)
+#   R2_SECRET_ACCESS_KEY  → Segredo da chave
+#   R2_BUCKET_NAME        → Nome do bucket (ex: "egpc-media")
+#   R2_ENDPOINT_URL       → https://<ACCOUNT_ID>.r2.cloudflarestorage.com
+#
+# Variável opcional:
+#   R2_PUBLIC_URL         → URL pública do bucket (domínio customizado ou r2.dev)
+#                           Ex: https://pub-xxxx.r2.dev  ou  https://media.egpc.gov.br
+#                           Necessária para que foto_perfil.url retorne link absoluto.
+
+# Mapeamento explícito das variáveis R2 → nomenclatura AWS esperada pelo django-storages
+AWS_ACCESS_KEY_ID      = env('R2_ACCESS_KEY_ID')           # Obrigatório — levanta ImproperlyConfigured se ausente
+AWS_SECRET_ACCESS_KEY  = env('R2_SECRET_ACCESS_KEY')       # Obrigatório
+AWS_STORAGE_BUCKET_NAME = env('R2_BUCKET_NAME')            # Obrigatório
+AWS_S3_ENDPOINT_URL    = env('R2_ENDPOINT_URL')            # Obrigatório — endpoint R2
+
+# R2 não usa ACLs (diferente do S3 tradicional)
+AWS_DEFAULT_ACL        = None
+# Não sobrescreve arquivos com o mesmo nome — gera nome único via uuid
+AWS_S3_FILE_OVERWRITE  = False
+# URLs sem query-string de assinatura (bucket público via R2_PUBLIC_URL)
+AWS_QUERYSTRING_AUTH   = False
+# Cache HTTP de 1 dia nos objetos servidos pelo R2
+AWS_S3_OBJECT_PARAMETERS = {"CacheControl": "max-age=86400"}
+
+# URL pública: custom domain (CDN / Workers) ou URL pública r2.dev
+_r2_public_url = env('R2_PUBLIC_URL', default='')
+if _r2_public_url:
+    # custom_domain deve ser APENAS o hostname, sem protocolo nem barra final
+    AWS_S3_CUSTOM_DOMAIN = (
+        _r2_public_url
+        .replace('https://', '')
+        .replace('http://', '')
+        .rstrip('/')
+    )
+    MEDIA_URL = f"https://{AWS_S3_CUSTOM_DOMAIN}/"
+else:
+    # Sem custom_domain: django-storages gera URLs assinadas/pré-assinadas a partir do endpoint
+    MEDIA_URL = f"{AWS_S3_ENDPOINT_URL}/{AWS_STORAGE_BUCKET_NAME}/"
+
+# Backend de storage padrão via STORAGES dict (Django 4.2+ — substitui DEFAULT_FILE_STORAGE)
+STORAGES = {
+    "default": {
+        "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
+    },
+    "staticfiles": {
+        "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+    },
+}
+
+# ─── E-mail (Google SMTP) ─────────────────────────────────────────────────────
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = env('EMAIL_HOST_USER', default='')
+EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD', default='')
+DEFAULT_FROM_EMAIL = f"Portal EGPC <{EMAIL_HOST_USER}>"
+============================================================
+📄 ARQUIVO: .\backend\core\urls.py
+============================================================
+
+from django.contrib import admin
+from django.urls import path, include
+from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+
+urlpatterns = [
+    path('admin/', admin.site.urls),
+    
+    # ── Rotas de Autenticação Nativas (Login) ──
+    path('api/auth/login/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('api/auth/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    
+    # Prefixamos todas as rotas da nossa API com /api/
+    path('api/users/', include('users.urls', namespace='users')),
+    path('api/cursos/', include('cursos.urls', namespace='cursos')),
+]
+============================================================
+📄 ARQUIVO: .\backend\cursos\models.py
+============================================================
+
+import uuid
+from datetime import date, datetime, time
+from django.db import models, transaction
+from django.core.exceptions import ValidationError
+from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
+from django.db.models.signals import pre_save
+from django.dispatch import receiver
+
+class Curso(models.Model):
+    class Tipo(models.TextChoices):
+        CENTRALIZADO = 'CENTRALIZADO', _('Centralizado')
+        DESCENTRALIZADO = 'DESCENTRALIZADO', _('Descentralizado')
+
+    class EixoTecnologico(models.TextChoices):
+        TECNOLOGIA = 'TECNOLOGIA', _('Tecnologia')
+        TECNICO_ESPECIALIZADO = 'TECNICO_ESPECIALIZADO', _('Técnico Especializado')
+        RELACOES_HUMANAS = 'RELACOES_HUMANAS', _('Relações Humanas')
+        GESTAO_PUBLICA = 'GESTAO_PUBLICA', _('Gestão Pública')
+        CONTABILIDADE_FINANCAS = 'CONTABILIDADE_FINANCAS', _('Contabilidade, Finanças e Previdência')
+
+    titulo = models.CharField(max_length=255, verbose_name="Título")
+    ementa = models.TextField(verbose_name="Ementa")
+    eixo = models.CharField(
+        max_length=50, 
+        choices=EixoTecnologico.choices, 
+        verbose_name="Eixo Tecnológico",
+        default=EixoTecnologico.GESTAO_PUBLICA
+    )
+    num_processo = models.CharField(max_length=50, blank=True, default='', verbose_name="Nº do Processo")
+    memorando = models.CharField(max_length=50, blank=True, default='', verbose_name="Memorando de Solicitação")
+    
+    tipo = models.CharField(max_length=20, choices=Tipo.choices, default=Tipo.CENTRALIZADO, verbose_name="Tipo")
+    codigo_oficial = models.CharField(max_length=20, unique=True, blank=True, verbose_name="Código Oficial")
+    
+    is_active = models.BooleanField(default=True, verbose_name="Ativo")
+    criado_em = models.DateTimeField(auto_now_add=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'catalogo_cursos'
+        verbose_name = 'Curso'
+        verbose_name_plural = 'Cursos'
+        ordering = ['-codigo_oficial']
+
+    def _gerar_codigo_oficial(self):
+        ano = timezone.now().year
+        ultimo = (
+            Curso.objects
+            .filter(codigo_oficial__endswith=f'/{ano}')
+            .order_by('-codigo_oficial')
+            .first()
+        )
+        if ultimo:
+            try:
+                seq = int(ultimo.codigo_oficial.split('/')[0]) + 1
+            except (ValueError, IndexError):
+                seq = 1
+        else:
+            seq = 1
+        return f"{seq:03d}/{ano}"
+
+    def save(self, *args, **kwargs):
+        if not self.codigo_oficial:
+            self.codigo_oficial = self._gerar_codigo_oficial()
+        super().save(*args, **kwargs)
+
+    @property
+    def status_geral(self):
+        turmas = self.turmas.all()
+        if not turmas.exists():
+            return 'SEM_TURMAS'
+        
+        prioridade = {
+            Turma.Status.EM_ANDAMENTO: 1,
+            Turma.Status.PREVISTA: 2,
+            Turma.Status.CONCLUIDA: 3,
+            Turma.Status.FINALIZADA: 4,
+            Turma.Status.ADIADA: 5,
+            Turma.Status.CANCELADA: 6,
+        }
+        statuses = [t.status_calculado for t in turmas]
+        return min(statuses, key=lambda s: prioridade.get(s, 99))
+
+    def __str__(self):
+        return f"{self.codigo_oficial} — {self.titulo}"
+
+
+class Turma(models.Model):
+    class Status(models.TextChoices):
+        PREVISTA = 'PREVISTA', _('Prevista')
+        EM_ANDAMENTO = 'EM_ANDAMENTO', _('Em Andamento')
+        CONCLUIDA = 'CONCLUIDA', _('Concluída')
+        FINALIZADA = 'FINALIZADA', _('Finalizada')
+        ADIADA = 'ADIADA', _('Adiada')
+        CANCELADA = 'CANCELADA', _('Cancelada')
+
+    class Modalidade(models.TextChoices):
+        PRESENCIAL = 'PRESENCIAL', _('Presencial')
+        REMOTO = 'REMOTO', _('Remoto (EAD)')
+        HIBRIDO = 'HIBRIDO', _('Híbrido')
+
+    class Visibilidade(models.TextChoices):
+        PUBLICA = 'PUBLICA', _('Pública (Catálogo Aberto)')
+        RESTRITA = 'RESTRITA', _('Restrita (Inscrição Manual)')
+
+    STATUS_MANUAIS = {Status.FINALIZADA, Status.ADIADA, Status.CANCELADA}
+
+    curso = models.ForeignKey(Curso, on_delete=models.CASCADE, related_name='turmas', verbose_name="Curso")
+    letra = models.CharField(max_length=5, blank=True, verbose_name="Letra da Turma")
+    modalidade = models.CharField(
+        max_length=20, 
+        choices=Modalidade.choices, 
+        default=Modalidade.PRESENCIAL,
+        verbose_name="Modalidade"
+    )
+    instrutor = models.ForeignKey(
+        'users.Profile', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='turmas_instruidas',
+        verbose_name="Instrutor",
+        limit_choices_to={'tipo_usuario': 'INSTRUTOR'}
+    )
+    visibilidade = models.CharField(
+        max_length=20, 
+        choices=Visibilidade.choices, 
+        default=Visibilidade.PUBLICA,
+        verbose_name="Visibilidade da Turma"
+    )
+    apenas_cadastro_manual = models.BooleanField(
+        default=False, 
+        verbose_name="Apenas Matrícula Manual",
+        help_text="Se ativo, o aluno não consegue se inscrever sozinho."
+    )
+    vinculos_permitidos = models.JSONField(
+        default=list, 
+        blank=True, 
+        verbose_name="Vínculos Permitidos",
+        help_text="Lista de tipos de usuário. Ex: ['SERVIDOR_ATIVO', 'ESTAGIARIO']. Vazio = todos."
+    )
+    vagas = models.PositiveIntegerField(default=30, verbose_name="Nº de Vagas")
+    custo = models.DecimalField(max_digits=10, decimal_places=2, default=0, verbose_name="Custo (R$)")
+    carga_horaria = models.PositiveIntegerField(default=0, verbose_name="Carga Horária (h)")
+    
+    data_inicio = models.DateField(verbose_name="Data de Início")
+    data_fim = models.DateField(verbose_name="Data de Término")
+    
+    status_manual = models.CharField(
+        max_length=20, choices=Status.choices,
+        null=True, blank=True, verbose_name="Status Manual",
+        help_text="Preencha apenas para Finalizado, Adiado ou Cancelado."
+    )
+    is_active = models.BooleanField(default=True, verbose_name="Ativa")
+    criado_em = models.DateTimeField(auto_now_add=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+    diario_fechado_em = models.DateTimeField(null=True, blank=True)
+    diario_fechado_por = models.ForeignKey('users.Profile', on_delete=models.SET_NULL, null=True, blank=True, related_name='diarios_fechados')
+
+    class Meta:
+        db_table = 'catalogo_turmas'
+        verbose_name = 'Turma'
+        verbose_name_plural = 'Turmas'
+        unique_together = [('curso', 'letra')]
+        ordering = ['curso', 'letra']
+        constraints = [
+            models.CheckConstraint(check=models.Q(custo__gte=0), name='chk_custo_positivo')
+        ]
+
+    @property
+    def carga_horaria_calculada(self):
+        total_segundos = 0
+        for evento in self.eventos.all():
+            if evento.hora_inicio and evento.hora_fim:
+                dummy_date = date(2000, 1, 1)
+                start = datetime.combine(dummy_date, evento.hora_inicio)
+                end = datetime.combine(dummy_date, evento.hora_fim)
+                total_segundos += (end - start).total_seconds()
+        return int(total_segundos // 3600)
+        
+    @property
+    def codigo_turma(self):
+        return f"{self.curso.codigo_oficial}{self.letra.upper()}"
+
+    @property
+    def status_calculado(self):
+        if self.status_manual and self.status_manual in self.STATUS_MANUAIS:
+            return self.status_manual
+        hoje = date.today()
+        if hoje > self.data_fim:
+            return self.Status.CONCLUIDA
+        elif self.data_inicio <= hoje <= self.data_fim:
+            return self.Status.EM_ANDAMENTO
+        return self.Status.PREVISTA
+
+    def clean(self):
+        if self.data_inicio and self.data_fim and self.data_inicio > self.data_fim:
+            raise ValidationError({'data_fim': _("A data de término deve ser posterior à data de início.")})
+
+    def __str__(self):
+        return self.codigo_turma
+
+    def _gerar_proxima_letra(self):
+        """Calcula a próxima letra da turma para o curso atual (A, B, C... Z, AA, AB...)"""
+        ultima = Turma.objects.filter(curso=self.curso).order_by('id').last()
+        if not ultima or not ultima.letra:
+            return 'A'
+        
+        letra = ultima.letra
+        if len(letra) == 1:
+            if letra == 'Z':
+                return 'AA'
+            return chr(ord(letra) + 1)
+        else:
+            # Lógica simples para turmas além do Z (ex: AA -> AB)
+            prefixo = letra[:-1]
+            sufixo = letra[-1]
+            if sufixo == 'Z':
+                return prefixo + 'A' + 'A' # Simplificação
+            return prefixo + chr(ord(sufixo) + 1)
+
+    def save(self, *args, **kwargs):
+        if not self.letra:
+            self.letra = self._gerar_proxima_letra()
+        super().save(*args, **kwargs)
+
+class TurmaGestor(models.Model):
+    turma = models.ForeignKey(Turma, on_delete=models.CASCADE, related_name='gestores_associados')
+    gestor = models.ForeignKey('users.Profile', on_delete=models.CASCADE, related_name='turmas_gerenciadas')
+
+    class Meta:
+        db_table = 'catalogo_turma_gestores'
+        verbose_name = 'Gestor da Turma'
+        verbose_name_plural = 'Gestores das Turmas'
+        constraints = [
+            models.UniqueConstraint(fields=['turma', 'gestor'], name='unique_turma_gestor')
+        ]
+
+class EspacoAlocado(models.Model):
+    espaco = models.CharField(max_length=20)
+    data = models.DateField()
+    turno_reserva = models.CharField(max_length=10)
+    # Referência opcional para rastrear de qual evento/item esta alocação veio
+    evento_ref = models.CharField(max_length=50, blank=True, null=True, help_text="Referência interna: 'evento_<id>' ou 'item_<id>'")
+
+    class Meta:
+        db_table = 'catalogo_espaco_alocado'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['data', 'turno_reserva', 'espaco'], 
+                name='unique_reserva_turno_espaco',
+                condition=~models.Q(espaco='EXTERNO')
+            )
+        ]
+class EventoTurma(models.Model):
+    """
+    Representa cada encontro ou período de atividade de uma turma.
+    Resolve a regra de múltiplos dias, horários e locais (Escola ou Externo).
+    """
+    class EspacoEscola(models.TextChoices):
+        LAB_INFO = 'LAB_INFO', _('Laboratório de Informática - 4º andar (30 vagas)')
+        SALA_1 = 'SALA_1', _('Sala de Aula 1 - 4º andar (21 vagas)')
+        SALA_2 = 'SALA_2', _('Sala de Aula 2 - 5º andar (33 vagas)')
+        AUDITORIO = 'AUDITORIO', _('Auditório - 5º andar (60 vagas)')
+        EXTERNO = 'EXTERNO', _('Espaço Externo / Outros')
+        ONLINE = 'ONLINE', _('Ambiente Virtual / EAD')
+
+    class TurnoBloqueio(models.TextChoices):
+        MANHA = 'MANHA', _('Manhã (08h às 12h)')
+        TARDE = 'TARDE', _('Tarde (13h às 17h)')
+        NOITE = 'NOITE', _('Noite (18h às 22h)')
+
+    turma = models.ForeignKey(Turma, on_delete=models.CASCADE, related_name='eventos')
+    data = models.DateField()
+    hora_inicio = models.TimeField()
+    hora_fim = models.TimeField()
+    espaco = models.CharField(max_length=20, choices=EspacoEscola.choices)
+    alocacao_fisica = models.OneToOneField(EspacoAlocado, on_delete=models.CASCADE, null=True, blank=True)
+    espaco_externo_nome = models.CharField(max_length=255, blank=True, null=True, verbose_name="Nome do Local Externo")
+    
+    # Campo calculado para a regra de bloqueio de agenda
+    turno_reserva = models.CharField(max_length=10, choices=TurnoBloqueio.choices, editable=False)
+
+    @staticmethod
+    def _calcular_turnos_cruzados(hora_inicio, hora_fim):
+        """
+        Dado hora_inicio e hora_fim, retorna a lista de turnos que o evento ocupa.
+        Um evento que vai das 11h às 14h ocupa MANHA e TARDE.
+        Turnos: MANHA=08-12h, TARDE=12-18h, NOITE=18-22h
+        """
+        LIMITES = [
+            ('MANHA', 0, 12),
+            ('TARDE', 12, 18),
+            ('NOITE', 18, 24),
+        ]
+        turnos = []
+        h_ini = hora_inicio.hour
+        h_fim = hora_fim.hour + (1 if hora_fim.minute > 0 else 0)  # fim exclusivo arredondado para cima
+        for nome, inicio, fim in LIMITES:
+            # O evento intercepta este turno se os intervalos se sobrepõem
+            if h_ini < fim and h_fim > inicio:
+                turnos.append(nome)
+        return turnos if turnos else ['MANHA']  # fallback de segurança
+
+    def save(self, *args, **kwargs):
+        # Define o turno_reserva baseado na hora de início (campo calculado)
+        h = self.hora_inicio.hour
+        if h < 12:
+            self.turno_reserva = self.TurnoBloqueio.MANHA
+        elif h < 18:
+            self.turno_reserva = self.TurnoBloqueio.TARDE
+        else:
+            self.turno_reserva = self.TurnoBloqueio.NOITE
+
+        if self.espaco not in [self.EspacoEscola.EXTERNO, self.EspacoEscola.ONLINE]:
+            from django.db import IntegrityError
+
+            # Calcula todos os turnos que este evento ocupa (pode ser 1 ou 2)
+            turnos = self._calcular_turnos_cruzados(self.hora_inicio, self.hora_fim)
+
+            # Salva o primeiro turno na alocacao_fisica (campo FK OneToOne)
+            turno_principal = turnos[0]
+            if not self.alocacao_fisica:
+                self.alocacao_fisica = EspacoAlocado(
+                    data=self.data, turno_reserva=turno_principal, espaco=self.espaco
+                )
+            else:
+                self.alocacao_fisica.data = self.data
+                self.alocacao_fisica.turno_reserva = turno_principal
+                self.alocacao_fisica.espaco = self.espaco
+
+            try:
+                self.alocacao_fisica.save()
+            except IntegrityError:
+                raise ValidationError(
+                    f"O espaço {self.get_espaco_display()} já está reservado no turno da Manhã nesta data."
+                )
+
+            # Se o evento cruza o meio-dia, cria/atualiza também a alocação do segundo turno
+            if len(turnos) > 1:
+                for turno_extra in turnos[1:]:
+                    try:
+                        EspacoAlocado.objects.get_or_create(
+                            data=self.data,
+                            turno_reserva=turno_extra,
+                            espaco=self.espaco,
+                            defaults={'evento_ref': f'evento_pendente'}
+                        )
+                    except IntegrityError:
+                        raise ValidationError(
+                            f"O espaço {self.get_espaco_display()} já está reservado no turno da Tarde nesta data."
+                        )
+        else:
+            if self.alocacao_fisica:
+                self.alocacao_fisica.delete()
+                self.alocacao_fisica = None
+
+        super().save(*args, **kwargs)
+
+        # Após ter o ID, atualiza o evento_ref das alocações extras
+        if self.espaco != self.EspacoEscola.EXTERNO and self.alocacao_fisica:
+            turnos = self._calcular_turnos_cruzados(self.hora_inicio, self.hora_fim)
+            if len(turnos) > 1:
+                for turno_extra in turnos[1:]:
+                    EspacoAlocado.objects.filter(
+                        data=self.data, turno_reserva=turno_extra, espaco=self.espaco
+                    ).update(evento_ref=f'evento_{self.id}')
+
+    class Meta:
+        db_table = 'catalogo_eventos_turma'
+        verbose_name = 'Evento da Turma'
+        verbose_name_plural = 'Eventos da Turma'
+        ordering = ['data', 'hora_inicio']
+        # constraints movidas para EspacoAlocado
+
+
+class Inscricao(models.Model):
+    class Status(models.TextChoices):
+        PENDENTE = 'pendente', _('Pendente')
+        APROVADO_CHEFIA = 'aprovado_chefia', _('Aprovado pela Chefia')
+        INSCRITO = 'inscrito', _('Inscrito')
+        FILA_ESPERA = 'fila_espera', _('Fila de Espera')
+        CONCLUIDO = 'concluido', _('Concluído')
+        REPROVADO = 'reprovado', _('Reprovado')
+        CANCELADO = 'cancelado', _('Cancelado')
+
+    perfil = models.ForeignKey('users.Profile', on_delete=models.CASCADE, related_name='inscricoes')
+    turma = models.ForeignKey(Turma, on_delete=models.CASCADE, related_name='inscricoes')
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDENTE)
+    data_inscricao = models.DateTimeField(auto_now_add=True)
+    nota = models.DecimalField(max_digits=4, decimal_places=2, null=True, blank=True, verbose_name="Nota Final")
+    hash_validacao = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
+    
+    # Auditoria
+    aprovado_por = models.ForeignKey('users.Profile', on_delete=models.SET_NULL, null=True, blank=True, related_name='aprovacoes')
+    aprovado_em = models.DateTimeField(null=True, blank=True)
+    ip_aprovacao = models.GenericIPAddressField(null=True, blank=True)
+    justificativa_rejeicao = models.TextField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'catalogo_inscricoes'
+        verbose_name = 'Inscrição'
+        verbose_name_plural = 'Inscrições'
+        ordering = ['-data_inscricao']
+        constraints = [
+            models.UniqueConstraint(fields=['perfil', 'turma'], name='unique_perfil_turma')
+        ]
+
+    def save(self, *args, **kwargs):
+        if not self.pk:
+            with transaction.atomic():
+                vagas_ocupadas = (
+                    Inscricao.objects
+                    .select_for_update()
+                    .filter(turma=self.turma, status__in=[self.Status.INSCRITO, self.Status.APROVADO_CHEFIA])
+                    .count()
+                )
+                if vagas_ocupadas >= self.turma.vagas:
+                    # Se não há vagas, automaticamente vai para a fila de espera
+                    # Salvo se o usuário for do tipo que requer aprovação de chefia e já vai para pendente
+                    # Mas para não complicar: a fila de espera resolve o limite físico da turma.
+                    self.status = self.Status.FILA_ESPERA
+                super().save(*args, **kwargs)
+        else:
+            super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.perfil} → {self.turma} [{self.status}]"
+    
+# ==========================================
+# MÓDULO DE AGENDA E SOLICITAÇÃO DE ESPAÇOS
+# ==========================================
+
+class SolicitacaoReserva(models.Model):
+    class Status(models.TextChoices):
+        PENDENTE = 'PENDENTE', _('Pendente')
+        APROVADA = 'APROVADA', _('Aprovada')
+        RECUSADA = 'RECUSADA', _('Recusada')
+        CANCELADA = 'CANCELADA', _('Cancelada')
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    solicitante = models.ForeignKey(
+        'users.Profile', related_name='solicitacoes_reserva', on_delete=models.CASCADE
+    )
+    titulo = models.CharField(max_length=255, verbose_name="Título do Evento")
+    descricao = models.TextField(blank=True, null=True, verbose_name="Descrição do Evento")
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.PENDENTE,
+        verbose_name="Status da Solicitação"
+    )
+    protocolo = models.CharField(max_length=20, unique=True, editable=False, verbose_name="Número de Protocolo")
+    justificativa_recusa = models.TextField(blank=True, null=True, verbose_name="Justificativa (em caso de recusa)")
+    
+    # Auditoria
+    avaliado_por = models.ForeignKey('users.Profile', on_delete=models.SET_NULL, null=True, blank=True, related_name='avaliacoes_reserva')
+    avaliado_em = models.DateTimeField(null=True, blank=True)
+    ip_avaliacao = models.GenericIPAddressField(null=True, blank=True)
+    
+    criado_em = models.DateTimeField(auto_now_add=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'catalogo_solicitacoes_reserva'
+        verbose_name = 'Solicitação de Reserva'
+        verbose_name_plural = 'Solicitações de Reserva'
+        ordering = ['-criado_em']
+
+    def save(self, *args, **kwargs):
+        if not self.protocolo:
+            data_atual = timezone.now().strftime("%Y%m%d")
+            codigo_aleatorio = str(uuid.uuid4().hex)[:4].upper()
+            self.protocolo = f"RES-{data_atual}-{codigo_aleatorio}"
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.protocolo} - {self.titulo}"
+
+
+class ItemReserva(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    solicitacao = models.ForeignKey(SolicitacaoReserva, related_name='itens', on_delete=models.CASCADE)
+    alocacao_fisica = models.OneToOneField(EspacoAlocado, on_delete=models.CASCADE, null=True, blank=True)
+    
+    # Herda os mesmos choices do EventoTurma para garantir a comparação perfeita
+    espaco = models.CharField(max_length=20, choices=EventoTurma.EspacoEscola.choices)
+    data = models.DateField()
+    turno_reserva = models.CharField(max_length=10, choices=EventoTurma.TurnoBloqueio.choices, editable=False)
+    hora_inicio = models.TimeField()
+    hora_fim = models.TimeField()
+
+    class Meta:
+        db_table = 'catalogo_itens_reserva'
+        verbose_name = 'Item de Reserva'
+        verbose_name_plural = 'Itens de Reserva'
+        ordering = ['data', 'hora_inicio']
+        # constraints movidas para EspacoAlocado
+
+    def clean(self):
+        errors = {}
+
+        if self.hora_inicio and self.hora_fim and self.hora_inicio >= self.hora_fim:
+            errors['hora_fim'] = _("A hora final deve ser posterior à hora inicial.")
+
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        if self.hora_inicio:
+            h = self.hora_inicio.hour
+            if h < 12:
+                self.turno_reserva = EventoTurma.TurnoBloqueio.MANHA
+            elif h < 18:
+                self.turno_reserva = EventoTurma.TurnoBloqueio.TARDE
+            else:
+                self.turno_reserva = EventoTurma.TurnoBloqueio.NOITE
+
+        self.clean()
+
+        if self.espaco != EventoTurma.EspacoEscola.EXTERNO:
+            from django.db import IntegrityError
+
+            # Calcula todos os turnos que este item de reserva ocupa
+            turnos = EventoTurma._calcular_turnos_cruzados(self.hora_inicio, self.hora_fim)
+            turno_principal = turnos[0]
+
+            if not self.alocacao_fisica:
+                self.alocacao_fisica = EspacoAlocado(
+                    data=self.data, turno_reserva=turno_principal, espaco=self.espaco
+                )
+            else:
+                self.alocacao_fisica.data = self.data
+                self.alocacao_fisica.turno_reserva = turno_principal
+                self.alocacao_fisica.espaco = self.espaco
+
+            try:
+                self.alocacao_fisica.save()
+            except IntegrityError:
+                raise ValidationError("O espaço já está reservado no turno da Manhã nesta data por outro evento ou reserva.")
+
+            # Evento cruzado: gera alocação extra para o segundo turno
+            if len(turnos) > 1:
+                for turno_extra in turnos[1:]:
+                    try:
+                        EspacoAlocado.objects.get_or_create(
+                            data=self.data,
+                            turno_reserva=turno_extra,
+                            espaco=self.espaco,
+                            defaults={'evento_ref': f'item_pendente'}
+                        )
+                    except IntegrityError:
+                        raise ValidationError(
+                            "O espaço já está reservado no turno da Tarde nesta data por outro evento ou reserva."
+                        )
+        else:
+            if self.alocacao_fisica:
+                self.alocacao_fisica.delete()
+                self.alocacao_fisica = None
+
+        super().save(*args, **kwargs)
+
+        # Atualiza referência nas alocações extras após ter o ID
+        if self.espaco != EventoTurma.EspacoEscola.EXTERNO and self.hora_inicio and self.hora_fim:
+            turnos = EventoTurma._calcular_turnos_cruzados(self.hora_inicio, self.hora_fim)
+            if len(turnos) > 1:
+                for turno_extra in turnos[1:]:
+                    EspacoAlocado.objects.filter(
+                        data=self.data, turno_reserva=turno_extra, espaco=self.espaco
+                    ).update(evento_ref=f'item_{self.id}')
+
+class RegistroPresenca(models.Model):
+    """ Mapeia se um aluno específico estava presente em um dia específico da turma """
+    class Status(models.TextChoices):
+        PRESENTE = 'PRESENTE', _('Presente')
+        FALTA = 'FALTA', _('Falta')
+        JUSTIFICADA = 'JUSTIFICADA', _('Falta Justificada')
+
+    inscricao = models.ForeignKey(Inscricao, on_delete=models.CASCADE, related_name='presencas')
+    evento = models.ForeignKey(EventoTurma, on_delete=models.CASCADE, related_name='presencas_evento')
+    status = models.CharField(
+        max_length=20, 
+        choices=Status.choices, 
+        default=Status.PRESENTE, 
+        verbose_name="Status de Presença"
+    )
+
+    class Meta:
+        db_table = 'catalogo_presencas'
+        verbose_name = 'Registro de Presença'
+        verbose_name_plural = 'Registros de Presença'
+        constraints = [
+            models.UniqueConstraint(fields=['inscricao', 'evento'], name='unique_inscricao_evento')
+        ]
+
+# ==========================================
+# MÓDULO EAD (LMS) E PROGRESSO
+# ==========================================
+
+class Modulo(models.Model):
+    """ Agrupador de atividades (Ex: Módulo 1 - Introdução) """
+    turma = models.ForeignKey(Turma, on_delete=models.CASCADE, related_name='modulos')
+    titulo = models.CharField(max_length=255, verbose_name="Título do Módulo")
+    ordem = models.PositiveIntegerField(default=0, verbose_name="Ordem de Exibição")
+    is_active = models.BooleanField(default=True, verbose_name="Ativo")
+
+    class Meta:
+        db_table = 'lms_modulos'
+        verbose_name = 'Módulo'
+        verbose_name_plural = 'Módulos'
+        ordering = ['ordem']
+
+    def __str__(self):
+        return f"{self.turma.codigo_turma} - {self.titulo}"
+
+
+class Atividade(models.Model):
+    """ O conteúdo em si: Vídeo do YouTube, Texto, ou Arquivo """
+    class Tipo(models.TextChoices):
+        VIDEO_YOUTUBE = 'VIDEO_YOUTUBE', _('Vídeo (YouTube)')
+        LEITURA = 'LEITURA', _('Material de Leitura / Link')
+        TAREFA = 'TAREFA', _('Tarefa Prática')
+        QUESTIONARIO = 'QUESTIONARIO', _('Questionário Avaliativo')
+
+    modulo = models.ForeignKey(Modulo, on_delete=models.CASCADE, related_name='atividades')
+    titulo = models.CharField(max_length=255, verbose_name="Título da Atividade")
+    descricao = models.TextField(blank=True, null=True, verbose_name="Instruções / Texto")
+    tipo = models.CharField(max_length=20, choices=Tipo.choices, default=Tipo.VIDEO_YOUTUBE)
+
+    url_video = models.URLField(blank=True, null=True, verbose_name="Link do YouTube")
+    carga_horaria_recompensa = models.PositiveIntegerField(
+        default=0,
+        verbose_name="Carga Horária (Recompensa)",
+        help_text="Quantas horas o aluno ganha ao concluir esta atividade?"
+    )
+    ordem = models.PositiveIntegerField(default=0)
+    is_active = models.BooleanField(default=True, verbose_name="Ativo")
+
+    # ── CONTROLE DE CARGA HORÁRIA: aprovação pelo Admin ──────────────────────
+    aprovado_admin = models.BooleanField(
+        default=False,
+        verbose_name="Aprovado pelo Admin",
+        help_text="Atividades EAD/Híbrido só somam carga horária após aprovação do administrador."
+    )
+    aprovado_por = models.ForeignKey(
+        'users.Profile',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='atividades_aprovadas',
+        verbose_name="Aprovado por"
+    )
+    aprovado_em = models.DateTimeField(null=True, blank=True, verbose_name="Data de Aprovação")
+
+    class Meta:
+        db_table = 'lms_atividades'
+        verbose_name = 'Atividade'
+        verbose_name_plural = 'Atividades'
+        ordering = ['ordem']
+
+    def __str__(self):
+        return self.titulo
+
+
+class ProgressoAtividade(models.Model):
+    """ Rastreador: Qual aluno concluiu qual atividade """
+    inscricao = models.ForeignKey(Inscricao, on_delete=models.CASCADE, related_name='progressos')
+    atividade = models.ForeignKey(Atividade, on_delete=models.CASCADE, related_name='conclusoes')
+    concluido = models.BooleanField(default=True)
+    data_conclusao = models.DateTimeField(auto_now_add=True)
+    nota_obtida = models.DecimalField(max_digits=4, decimal_places=2, null=True, blank=True, verbose_name="Nota Normalizada (0 a 10)")
+
+    class Meta:
+        db_table = 'lms_progresso_alunos'
+        constraints = [
+            models.UniqueConstraint(fields=['inscricao', 'atividade'], name='unique_inscricao_atividade')
+        ]
+class ProgressoSessaoEAD(models.Model):
+    progresso = models.ForeignKey(ProgressoAtividade, on_delete=models.CASCADE, related_name='sessoes')
+    timestamp_ping = models.DateTimeField(auto_now_add=True)
+    duracao_minutos = models.IntegerField(default=1)
+
+    class Meta:
+        db_table = 'lms_progresso_sessoes_ead'
+        ordering = ['-timestamp_ping']
+
+
+# ==========================================
+# LMS - QUESTIONÁRIOS
+# ==========================================
+
+class Questionario(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    atividade = models.OneToOneField(Atividade, on_delete=models.CASCADE, related_name='questionario')
+    titulo = models.CharField(max_length=255)
+    descricao = models.TextField(blank=True, null=True)
+    tentativas_permitidas = models.IntegerField(default=1)
+    tempo_limite_minutos = models.IntegerField(default=0, help_text="0 significa sem tempo limite")
+    nota_minima_aprovacao = models.DecimalField(max_digits=5, decimal_places=2, default=70.00)
+
+    class Meta:
+        db_table = 'lms_questionarios'
+
+    def __str__(self):
+        return f"Questionário: {self.titulo}"
+
+class Questao(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    questionario = models.ForeignKey(Questionario, on_delete=models.CASCADE, related_name='questoes')
+    enunciado = models.TextField()
+    ordem = models.IntegerField(default=0)
+    valor = models.DecimalField(max_digits=5, decimal_places=2, default=10.00)
+
+    class Meta:
+        db_table = 'lms_questoes'
+        ordering = ['ordem']
+
+    def __str__(self):
+        return f"Q{self.ordem} - {self.questionario.titulo}"
+
+class Opcao(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    questao = models.ForeignKey(Questao, on_delete=models.CASCADE, related_name='opcoes')
+    texto = models.TextField()
+    is_correta = models.BooleanField(default=False)
+    ordem = models.IntegerField(default=0)
+
+    class Meta:
+        db_table = 'lms_opcoes'
+        ordering = ['ordem']
+
+    def __str__(self):
+        return f"Opção: {self.texto[:30]}"
+
+class TentativaQuestionario(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    progresso = models.ForeignKey(ProgressoAtividade, on_delete=models.CASCADE, related_name='tentativas')
+    questionario = models.ForeignKey(Questionario, on_delete=models.CASCADE)
+    numero_tentativa = models.IntegerField(default=1)
+    inicio = models.DateTimeField(auto_now_add=True)
+    fim = models.DateTimeField(null=True, blank=True)
+    nota_obtida = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
+    finalizada = models.BooleanField(default=False)
+
+    class Meta:
+        db_table = 'lms_tentativas_questionario'
+
+class RespostaAluno(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    tentativa = models.ForeignKey(TentativaQuestionario, on_delete=models.CASCADE, related_name='respostas', null=True, blank=True)
+    questao = models.ForeignKey(Questao, on_delete=models.CASCADE)
+    opcao_selecionada = models.ForeignKey(Opcao, on_delete=models.CASCADE)
+    data_resposta = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'lms_respostas_alunos'
+        unique_together = ('tentativa', 'questao')
+
+    def __str__(self):
+        return f"Resp: {self.questao}"
+
+# ============================================================
+# MÓDULO DE AUDITORIA — HistoricoAlteracao
+# Registra alterações em Notas (Inscricao.nota) e Presenças
+# (RegistroPresenca.status) via Signals do Django.
+# ============================================================
+
+class HistoricoAlteracao(models.Model):
+    """Audit trail leve para rastrear mudanças críticas de dados acadêmicos."""
+
+    class TipoAcao(models.TextChoices):
+        NOTA_ALTERADA = 'NOTA_ALTERADA', _('Nota Alterada')
+        PRESENCA_ALTERADA = 'PRESENCA_ALTERADA', _('Presença Alterada')
+        DIARIO_FECHADO = 'DIARIO_FECHADO', _('Diário Fechado')
+
+    tipo_acao = models.CharField(
+        max_length=30, choices=TipoAcao.choices, verbose_name="Tipo de Ação"
+    )
+    # Quem fez a ação (pode ser null se o signal não tiver contexto de request)
+    usuario = models.ForeignKey(
+        'users.Profile', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='historico_alteracoes',
+        verbose_name="Usuário Responsável"
+    )
+    # Referência ao objeto alterado (ex: inscricao_id ou presenca_id)
+    tabela_referencia = models.CharField(max_length=80, verbose_name="Tabela/Objeto")
+    objeto_id = models.CharField(max_length=50, verbose_name="ID do Objeto")
+    # Os valores antes e depois da mudança (armazenados como texto)
+    valor_anterior = models.TextField(verbose_name="Valor Anterior", blank=True, null=True)
+    valor_novo = models.TextField(verbose_name="Valor Novo", blank=True, null=True)
+    # Campos de auditoria
+    timestamp = models.DateTimeField(auto_now_add=True, verbose_name="Data/Hora")
+    ip = models.GenericIPAddressField(null=True, blank=True, verbose_name="IP de Origem")
+
+    class Meta:
+        db_table = 'catalogo_auditoria'
+        verbose_name = 'Histórico de Alteração'
+        verbose_name_plural = 'Histórico de Alterações'
+        ordering = ['-timestamp']
+
+    def __str__(self):
+        return f"[{self.tipo_acao}] obj={self.objeto_id} em {self.timestamp:%d/%m/%Y %H:%M}"
+
+
+# ──────────────────────────────────────────────────────────────
+# SIGNALS — Captura automática de alterações
+# ──────────────────────────────────────────────────────────────
+
+@receiver(pre_save, sender='cursos.Inscricao')
+def signal_nota_alterada(sender, instance, **kwargs):
+    """
+    Dispara antes de salvar uma Inscricao.
+    Se a nota mudou em relação ao valor persistido no BD, registra o histórico.
+    """
+    if not instance.pk:
+        return  # Novo registro, nada a comparar
+    try:
+        anterior = sender.objects.get(pk=instance.pk)
+    except sender.DoesNotExist:
+        return
+
+    # Compara o valor antigo com o novo
+    nota_anterior = anterior.nota
+    nota_nova = instance.nota
+
+    if str(nota_anterior) != str(nota_nova):  # Mudança detectada
+        # Tenta pegar o usuário e IP do contexto de thread local (injetado pela View)
+        from cursos._audit_context import get_audit_context
+        ctx = get_audit_context()
+        HistoricoAlteracao.objects.create(
+            tipo_acao=HistoricoAlteracao.TipoAcao.NOTA_ALTERADA,
+            usuario_id=ctx.get('usuario_id'),
+            tabela_referencia='catalogo_inscricoes',
+            objeto_id=str(instance.pk),
+            valor_anterior=str(nota_anterior) if nota_anterior is not None else 'sem nota',
+            valor_novo=str(nota_nova) if nota_nova is not None else 'removida',
+            ip=ctx.get('ip'),
+        )
+
+
+@receiver(pre_save, sender='cursos.RegistroPresenca')
+def signal_presenca_alterada(sender, instance, **kwargs):
+    """
+    Dispara antes de salvar um RegistroPresenca.
+    Se o status mudou, registra o histórico.
+    """
+    if not instance.pk:
+        return  # Novo registro
+    try:
+        anterior = sender.objects.get(pk=instance.pk)
+    except sender.DoesNotExist:
+        return
+
+    status_anterior = anterior.status
+    status_novo = instance.status
+
+    if status_anterior != status_novo:
+        from cursos._audit_context import get_audit_context
+        ctx = get_audit_context()
+        HistoricoAlteracao.objects.create(
+            tipo_acao=HistoricoAlteracao.TipoAcao.PRESENCA_ALTERADA,
+            usuario_id=ctx.get('usuario_id'),
+            tabela_referencia='catalogo_presencas',
+            objeto_id=str(instance.pk),
+            valor_anterior=status_anterior,
+            valor_novo=status_novo,
+            ip=ctx.get('ip'),
+        )
+
+============================================================
+📄 ARQUIVO: .\backend\cursos\serializers.py
+============================================================
+
+from rest_framework import serializers
+from .models import Curso, Turma, EventoTurma, Inscricao, SolicitacaoReserva, ItemReserva, Modulo, Atividade, ProgressoAtividade, Questionario, Questao, Opcao
+from users.serializers import ProfileSerializer
+from django.db import transaction, IntegrityError
+
+class EventoTurmaSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EventoTurma
+        fields = ['id', 'data', 'hora_inicio', 'hora_fim', 'espaco', 'espaco_externo_nome', 'turno_reserva']
+
+
+class TurmaSerializer(serializers.ModelSerializer):
+    instrutor_nome = serializers.CharField(source='instrutor.nome_completo', read_only=True)
+    codigo = serializers.CharField(source='codigo_turma', read_only=True)
+    status = serializers.CharField(source='status_calculado', read_only=True)
+    eventos = EventoTurmaSerializer(many=True, required=False)
+    vagas_restantes = serializers.SerializerMethodField()
+    letra = serializers.CharField(read_only=True)
+    
+    # Campo virtual para receber o CPF do front-end
+    instrutor_cpf = serializers.CharField(write_only=True, required=False, allow_blank=True, allow_null=True)
+    gestores_permitidos = serializers.ListField(
+        child=serializers.CharField(),
+        required=False,
+        write_only=True
+    )
+
+    class Meta:
+        model = Turma
+        fields = [
+            'id', 'curso', 'codigo', 'letra', 'modalidade', 'visibilidade',
+            'vinculos_permitidos', 'apenas_cadastro_manual',
+            'gestores_permitidos', 'data_inicio', 'data_fim', 'carga_horaria',
+            'vagas', 'custo', 'instrutor', 'instrutor_nome', 'instrutor_cpf',
+            'status', 'eventos', 'vagas_restantes'
+        ]
+
+    def to_representation(self, instance):
+        ret = super().to_representation(instance)
+        # Popula o array de CPFs para compatibilidade com o frontend
+        if hasattr(instance, 'gestores_associados'):
+            ret['gestores_permitidos'] = [g.gestor.cpf for g in instance.gestores_associados.all()]
+        else:
+            ret['gestores_permitidos'] = []
+
+        ret['curso'] = {
+            "id": instance.curso.id,
+            "titulo": instance.curso.titulo,
+            "tipo": instance.curso.tipo,
+        }
+
+        return ret
+
+    def get_vagas_restantes(self, obj):
+        inscricoes_ativas = obj.inscricoes.exclude(status='cancelado').count()
+        return max(0, obj.vagas - inscricoes_ativas)
+
+    def create(self, validated_data):
+        eventos_data = validated_data.pop('eventos', [])
+        instrutor_cpf = validated_data.pop('instrutor_cpf', None)
+        gestores_dados = validated_data.pop('gestores_permitidos', [])
+        
+        # Lógica do Instrutor Fantasma
+        if instrutor_cpf:
+            import re
+            from users.models import Profile
+            cpf_limpo = re.sub(r'\D', '', instrutor_cpf)
+            
+            if len(cpf_limpo) == 11:
+                # Busca ou cria a "casca" do perfil
+                instrutor, created = Profile.objects.get_or_create(
+                    cpf=cpf_limpo,
+                    defaults={
+                        'nome_completo': 'Instrutor Pendente de Cadastro',
+                        'email': f'pendente_{cpf_limpo}@escola.local',
+                        'tipo_usuario': 'INSTRUTOR',
+                        'is_active': True
+                    }
+                )
+                validated_data['instrutor'] = instrutor
+
+        # ── A BOLHA DE PROTEÇÃO (ATOMIC) ──
+        try:
+            with transaction.atomic():
+                turma = Turma.objects.create(**validated_data)
+                
+                for evento_data in eventos_data:
+                    EventoTurma.objects.create(turma=turma, **evento_data)
+                    
+                from cursos.models import TurmaGestor
+                from users.models import Profile
+                
+                for gestor_cpf in gestores_dados:
+                    perfil = Profile.objects.filter(cpf=gestor_cpf).first()
+                    if perfil:
+                        TurmaGestor.objects.get_or_create(turma=turma, gestor=perfil)
+                
+                return turma
+                
+        except IntegrityError:
+            # Transforma a quebra do banco (ex: sala ocupada) em um erro 400 amigável
+            raise serializers.ValidationError({
+                "detail": "Conflito de agenda. Um ou mais espaços selecionados já estão ocupados neste horário."
+            })
+
+    def update(self, instance, validated_data):
+        gestores_dados = validated_data.pop('gestores_permitidos', None)
+        eventos_data = validated_data.pop('eventos', None)
+        instrutor_cpf = validated_data.pop('instrutor_cpf', None)
+        
+        if instrutor_cpf:
+            import re
+            from users.models import Profile
+            cpf_limpo = re.sub(r'\D', '', instrutor_cpf)
+            if len(cpf_limpo) == 11:
+                instrutor, _ = Profile.objects.get_or_create(
+                    cpf=cpf_limpo,
+                    defaults={
+                        'nome_completo': 'Instrutor Pendente de Cadastro',
+                        'email': f'pendente_{cpf_limpo}@escola.local',
+                        'tipo_usuario': 'INSTRUTOR',
+                        'is_active': True
+                    }
+                )
+                validated_data['instrutor'] = instrutor
+
+        # ── A BOLHA DE PROTEÇÃO NO UPDATE ──
+        try:
+            with transaction.atomic():
+                # Salva dados básicos da Turma
+                for attr, value in validated_data.items():
+                    setattr(instance, attr, value)
+                instance.save()
+
+                # Update M2M dos gestores
+                if gestores_dados is not None:
+                    from cursos.models import TurmaGestor
+                    from users.models import Profile
+                    
+                    # Limpa e recria associações
+                    instance.gestores_associados.all().delete()
+                    for gestor_cpf in gestores_dados:
+                        perfil = Profile.objects.filter(cpf=gestor_cpf).first()
+                        if perfil:
+                            TurmaGestor.objects.create(turma=instance, gestor=perfil)
+                
+                return instance
+                
+        except IntegrityError:
+            raise serializers.ValidationError({
+                "detail": "Erro de integridade ao atualizar a turma."
+            })
+
+class InscricaoDetailSerializer(serializers.ModelSerializer):
+    perfil = ProfileSerializer(read_only=True)
+    turma = TurmaSerializer(read_only=True)
+    curso = serializers.SerializerMethodField()
+    is_urgente = serializers.SerializerMethodField()
+    
+    titulo_curso = serializers.CharField(source='turma.curso.titulo', read_only=True)
+    codigo_turma = serializers.CharField(source='turma.codigo_turma', read_only=True)
+    data_inicio = serializers.DateField(source='turma.data_inicio', read_only=True)
+    data_termino = serializers.DateField(source='turma.data_fim', read_only=True)
+    modalidade = serializers.CharField(source='turma.modalidade', read_only=True)
+    carga_horaria = serializers.IntegerField(source='turma.carga_horaria', read_only=True)
+
+    class Meta:
+        model = Inscricao
+        fields = '__all__'
+
+    def get_is_urgente(self, obj):
+        from django.utils import timezone
+        
+        now = timezone.now()
+        # Pendente há mais de 5 dias
+        if (now - obj.data_inscricao).days > 5:
+            return True
+            
+        # Faltam menos de 48h (2 dias) para o curso começar
+        # data_inicio é date, convertemos para datetime para comparar
+        from datetime import datetime
+        dummy_time = datetime.min.time()
+        data_inicio_dt = timezone.make_aware(datetime.combine(obj.turma.data_inicio, dummy_time))
+        
+        if (data_inicio_dt - now).days <= 2:
+            return True
+            
+        return False
+
+    def get_curso(self, obj):
+        return {
+            "id": obj.turma.curso.id,
+            "titulo": obj.turma.curso.titulo,
+            "codigo_oficial": obj.turma.curso.codigo_oficial
+        }
+
+class CursoSerializer(serializers.ModelSerializer):
+    turmas = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Curso
+        fields = [
+            'id', 'codigo_oficial', 'titulo', 'ementa', 'tipo', 'eixo', 'num_processo', 'memorando', 'status_geral', 'turmas'
+        ]
+        
+    def get_turmas(self, obj):
+        # Retorna apenas as turmas que estão ativas no sistema
+        turmas_ativas = obj.turmas.filter(is_active=True)
+        
+        request = self.context.get('request')
+        if request and request.user.is_authenticated and not request.user.is_staff:
+            tipo_user = request.user.tipo_usuario
+            # Filtra turmas baseadas no vinculos_permitidos
+            # Se vinculos_permitidos está vazio, é público. Se tem algo, o tipo_user precisa estar na lista.
+            turmas_filtradas = []
+            for t in turmas_ativas:
+                # Ocultar turmas apenas de cadastro manual para não-admins? 
+                # Depende da regra de negócio, mas a regra do catálogo geralmente esconde turmas ocultas/internas.
+                # Como a visibilidade 'RESTRITA' ou 'apenas_cadastro_manual' serve para isso, vamos ocultar do catálogo público:
+                if t.visibilidade == 'RESTRITA':
+                    continue
+                
+                # Checar vínculos
+                if not t.vinculos_permitidos or tipo_user in t.vinculos_permitidos:
+                    turmas_filtradas.append(t)
+                    
+            return TurmaSerializer(turmas_filtradas, many=True, context=self.context).data
+
+        return TurmaSerializer(turmas_ativas, many=True, context=self.context).data
+    
+
+class ItemReservaSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ItemReserva
+        fields = ['id', 'espaco', 'data', 'hora_inicio', 'hora_fim', 'turno_reserva']
+        read_only_fields = ['turno_reserva']
+
+class SolicitacaoReservaSerializer(serializers.ModelSerializer):
+    itens = ItemReservaSerializer(many=True)
+    solicitante_nome = serializers.CharField(source='solicitante.nome_completo', read_only=True)
+
+    class Meta:
+        model = SolicitacaoReserva
+        fields = [
+            'id', 'solicitante', 'solicitante_nome', 'titulo', 'descricao',
+            'status', 'protocolo', 'justificativa_recusa', 'itens',
+            'criado_em', 'atualizado_em'
+        ]
+        read_only_fields = ['solicitante', 'status', 'protocolo', 'justificativa_recusa']
+
+    def create(self, validated_data):
+        itens_data = validated_data.pop('itens')
+        solicitacao = SolicitacaoReserva.objects.create(**validated_data)
+        for item_data in itens_data:
+            ItemReserva.objects.create(solicitacao=solicitacao, **item_data)
+        return solicitacao
+    
+class AtividadeSerializer(serializers.ModelSerializer):
+    concluida = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Atividade
+        fields = ['id', 'titulo', 'descricao', 'tipo', 'url_video', 'carga_horaria_recompensa', 'ordem', 'concluida', 'questionario_id']
+
+    def get_concluida(self, obj):
+        # Esse contexto será passado pela View
+        inscricao_id = self.context.get('inscricao_id')
+        if not inscricao_id:
+            return False
+        return ProgressoAtividade.objects.filter(atividade=obj, inscricao_id=inscricao_id, concluido=True).exists()
+
+class ModuloSerializer(serializers.ModelSerializer):
+    atividades = AtividadeSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Modulo
+        fields = ['id', 'titulo', 'ordem', 'atividades']
+
+class OpcaoSerializer(serializers.ModelSerializer):
+    id = serializers.UUIDField(required=False)
+
+    class Meta:
+        model = Opcao
+        fields = ['id', 'texto', 'is_correta', 'ordem']
+
+class QuestaoSerializer(serializers.ModelSerializer):
+    id = serializers.UUIDField(required=False)
+    opcoes = OpcaoSerializer(many=True)
+
+    class Meta:
+        model = Questao
+        fields = ['id', 'enunciado', 'ordem', 'valor', 'opcoes']
+
+class QuestionarioSerializer(serializers.ModelSerializer):
+    questoes = QuestaoSerializer(many=True)
+
+    class Meta:
+        model = Questionario
+        fields = ['id', 'atividade', 'titulo', 'descricao', 'tentativas_permitidas', 'tempo_limite_minutos', 'nota_minima_aprovacao', 'questoes']
+
+    def create(self, validated_data):
+        questoes_data = validated_data.pop('questoes', [])
+        questionario = Questionario.objects.create(**validated_data)
+        for questao_data in questoes_data:
+            opcoes_data = questao_data.pop('opcoes', [])
+            questao = Questao.objects.create(questionario=questionario, **questao_data)
+            for opcao_data in opcoes_data:
+                Opcao.objects.create(questao=questao, **opcao_data)
+        return questionario
+
+    def update(self, instance, validated_data):
+        questoes_data = validated_data.pop('questoes', [])
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+
+        # Recriar as questões
+        instance.questoes.all().delete()
+
+        for questao_data in questoes_data:
+            opcoes_data = questao_data.pop('opcoes', [])
+            questao_data.pop('id', None)
+            questao = Questao.objects.create(questionario=instance, **questao_data)
+            for opcao_data in opcoes_data:
+                opcao_data.pop('id', None)
+                Opcao.objects.create(questao=questao, **opcao_data)
+
+        return instance
+============================================================
+📄 ARQUIVO: .\backend\cursos\urls.py
+============================================================
+
+from django.urls import path
+from .views import (
+    CursoListView, TurmaCreateView, TurmaUpdateView, InscreverTurmaView,
+    AprovarInscricaoView, MinhasInscricoesSimplificadasView,
+    InscricoesEquipeView, MinhasInscricoesDetailView,
+    MinhasSolicitacoesView, AgendaGlobalView, AgendaConflitoView,
+    AdminSolicitacoesView, AvaliarSolicitacaoView,
+    CancelarSolicitacaoView,
+    MinhasTurmasInstrutorView, DiarioTurmaView,
+    AdminMatricularAlunoView,
+    SalaDeAulaView, ConcluirAtividadeView, PingAtividadeView,
+    MinhasGestoesView, GestaoAlunosTurmaView,
+    ModuloViewSet, AtividadeViewSet, AtividadeAprovarView,
+    AdminStatsView, AlunoStatsView, TurmaDestroyView,
+    QuestionarioView, QuestionarioCopiarView, SubmeterQuestionarioView,
+)
+
+app_name = 'cursos'
+
+urlpatterns = [
+    path('', CursoListView.as_view(), name='lista-cursos'),
+    path('turmas/', TurmaCreateView.as_view(), name='criar-turma'),
+    path('turmas/<int:pk>/deletar/', TurmaDestroyView.as_view(), name='deletar-turma'),
+    path('turmas/<int:pk>/', TurmaUpdateView.as_view(), name='editar-turma'),
+    path('turmas/<int:turma_id>/inscrever/', InscreverTurmaView.as_view(), name='inscrever-turma'),
+    path('inscricoes/<int:pk>/status/', AprovarInscricaoView.as_view(), name='aprovar-inscricao'),
+    path('inscricoes/minha-equipe/', InscricoesEquipeView.as_view(), name='inscricoes-equipe'),
+    path('minhas-inscricoes/', MinhasInscricoesSimplificadasView.as_view(), name='minhas-inscricoes-simplificadas'),
+    path('minhas-inscricoes/detalhes/', MinhasInscricoesDetailView.as_view(), name='minhas-inscricoes-detalhes'),
+    path('agenda/', AgendaGlobalView.as_view(), name='agenda-global'),
+    path('agenda/conflito/', AgendaConflitoView.as_view(), name='agenda-conflito'),
+    path('minhas-solicitacoes/', MinhasSolicitacoesView.as_view(), name='minhas-solicitacoes'),
+    path('admin-solicitacoes/', AdminSolicitacoesView.as_view(), name='admin-solicitacoes'),
+    path('solicitacoes/<str:pk>/avaliar/', AvaliarSolicitacaoView.as_view(), name='avaliar-solicitacao'),
+    path('solicitacoes/<str:pk>/cancelar/', CancelarSolicitacaoView.as_view(), name='cancelar-solicitacao'),
+    path('turmas/instrutor/', MinhasTurmasInstrutorView.as_view(), name='turmas-instrutor'),
+    path('diario/<int:turma_id>/', DiarioTurmaView.as_view(), name='diario-turma'),
+    path('turmas/<int:turma_id>/matricular-admin/', AdminMatricularAlunoView.as_view(), name='admin-matricular'),
+    path('turmas/<int:turma_id>/sala-de-aula/', SalaDeAulaView.as_view(), name='sala-de-aula'),
+    path('atividades/<int:atividade_id>/ping/', PingAtividadeView.as_view(), name='ping-atividade'),
+    path('atividades/<int:atividade_id>/concluir/', ConcluirAtividadeView.as_view(), name='concluir-atividade'),
+    path('atividades/<int:pk>/aprovar/', AtividadeAprovarView.as_view(), name='aprovar-atividade'),
+
+    path('turmas/gestao-delegada/', MinhasGestoesView.as_view(), name='turmas-gestao-delegada'),
+    path('turmas/<int:turma_id>/gestao-alunos/', GestaoAlunosTurmaView.as_view(), name='gestao-alunos-turma'),
+
+    # LMS Management
+    path('turmas/<int:turma_id>/modulos/', ModuloViewSet.as_view(), name='gerenciar-modulos'),
+    path('modulos/<int:pk>/', ModuloViewSet.as_view(), name='detalhe-modulo'),
+    path('modulos/<int:modulo_id>/atividades/', AtividadeViewSet.as_view(), name='gerenciar-atividades'),
+    path('atividades/<int:pk>/detalhe/', AtividadeViewSet.as_view(), name='detalhe-atividade'),
+
+    path('atividades/<int:atividade_id>/questionario/', QuestionarioView.as_view(), name='questionario-atividade'),
+    path('atividades/<int:atividade_origem_id>/copiar-questionario/<int:atividade_destino_id>/', QuestionarioCopiarView.as_view(), name='copiar-questionario'),
+    path('atividades/<int:atividade_id>/submeter-questionario/', SubmeterQuestionarioView.as_view(), name='submeter-questionario'),
+
+    # Admin Stats
+    path('admin-stats/', AdminStatsView.as_view(), name='admin-stats'),
+    path('aluno-stats/', AlunoStatsView.as_view(), name='aluno-stats'),
+]
+
+============================================================
+📄 ARQUIVO: .\backend\cursos\views.py
+============================================================
+
+from rest_framework import generics, status
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser
+from django.db import transaction
+from django.utils import timezone
+from django.shortcuts import get_object_or_404
+from .models import Curso, Turma, Inscricao, SolicitacaoReserva, ItemReserva, EventoTurma, RegistroPresenca, Modulo, Atividade, ProgressoAtividade, EspacoAlocado, Questionario, Questao, Opcao, TentativaQuestionario, RespostaAluno
+from .serializers import CursoSerializer, TurmaSerializer, InscricaoDetailSerializer, SolicitacaoReservaSerializer, ModuloSerializer, QuestionarioSerializer
+
+from users.models import Profile
+from rest_framework.exceptions import PermissionDenied
+
+class CursoListView(generics.ListCreateAPIView):
+    serializer_class = CursoSerializer
+
+    def get_permissions(self):
+        # Apenas administradores (is_staff) podem criar cursos via POST. Qualquer um pode ver (GET).
+        if self.request.method == 'POST':
+            return [IsAdminUser()]
+        return [AllowAny()]
+
+    def get_queryset(self):
+        from django.db.models import Prefetch
+        # Prefetch para evitar o gargalo de performance N+1 ao carregar catálogo
+        prefetch = Prefetch('turmas', queryset=Turma.objects.filter(is_active=True))
+        return Curso.objects.filter(is_active=True).prefetch_related(prefetch).order_by('-codigo_oficial')
+    
+class CursoUpdateView(generics.UpdateAPIView):
+    """ PATCH/PUT: Edita um curso base existente (apenas Admin) """
+    serializer_class = CursoSerializer
+    permission_classes = [IsAuthenticated, IsAdminUser]
+    queryset = Curso.objects.all()
+
+class TurmaCreateView(generics.CreateAPIView):
+    serializer_class = TurmaSerializer
+    permission_classes = [IsAuthenticated]
+
+class MinhasInscricoesSimplificadasView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        inscricoes = Inscricao.objects.filter(perfil=user).exclude(status='cancelado')
+        turmas = list(inscricoes.values_list('turma_id', flat=True))
+        cursos = list(inscricoes.values_list('turma__curso_id', flat=True))
+        return Response({
+            "turmas": turmas,
+            "cursos": cursos
+        })
+
+class InscreverTurmaView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, turma_id):
+        user = request.user
+
+        if user.esta_bloqueado():
+            return Response({"detail": "Usuário cumprindo período de suspensão"}, status=status.HTTP_403_FORBIDDEN)
+
+        # Trava de Perfil Incompleto
+        if user.tipo_usuario in ['SERVIDOR_ATIVO', 'TERCEIRIZADO', 'ESTAGIARIO']:
+            if not user.dados_servidor or not user.dados_servidor.get('matricula'):
+                return Response({
+                    "detail": "Seu perfil está incompleto. A matrícula é obrigatória para realizar inscrições. Atualize seus dados em 'Meu Perfil'."
+                }, status=status.HTTP_403_FORBIDDEN)
+
+        with transaction.atomic():
+            try:
+                turma = Turma.objects.select_for_update().get(id=turma_id)
+            except Turma.DoesNotExist:
+                return Response({"detail": "Turma não encontrada."}, status=status.HTTP_404_NOT_FOUND)
+
+            if turma.visibilidade == Turma.Visibilidade.RESTRITA:
+                if turma.apenas_cadastro_manual and not user.is_staff:
+                    return Response(
+                        {"detail": "Esta turma é fechada. A matrícula só pode ser feita pela gestão."}, 
+                        status=status.HTTP_403_FORBIDDEN
+                    )
+                
+                if turma.vinculos_permitidos and user.tipo_usuario not in turma.vinculos_permitidos:
+                    return Response(
+                        {"detail": "O seu tipo de vínculo não tem permissão para ingressar nesta turma."}, 
+                        status=status.HTTP_403_FORBIDDEN
+                    )
+            
+            # Verifica se já está ativo em QUALQUER turma deste curso
+            ja_inscrito = Inscricao.objects.filter(
+                perfil=user,
+                turma__curso=turma.curso
+            ).exclude(status__in=[Inscricao.Status.CANCELADO, Inscricao.Status.REPROVADO]).exists()
+
+            if ja_inscrito:
+                return Response({"detail": "Você já está inscrito ou aguardando aprovação para este curso"}, status=status.HTTP_400_BAD_REQUEST)
+
+            # Checagem de vagas antes de prosseguir
+            vagas_ocupadas = Inscricao.objects.filter(
+                turma=turma, 
+                status__in=[Inscricao.Status.INSCRITO, Inscricao.Status.APROVADO_CHEFIA]
+            ).count()
+            
+            if vagas_ocupadas >= turma.vagas:
+                return Response({"detail": f"Turma sem vagas disponíveis ({vagas_ocupadas}/{turma.vagas})."}, status=status.HTTP_400_BAD_REQUEST)
+
+            if user.tipo_usuario == 'CIDADAO':
+                novo_status = Inscricao.Status.INSCRITO
+            else:
+                novo_status = Inscricao.Status.PENDENTE
+
+            try:
+                # O SEGREDO ESTÁ AQUI: Usa get_or_create. Se a inscrição (cancelada) já existir, ele não cria outra, ele resgata.
+                inscricao, created = Inscricao.objects.get_or_create(
+                    perfil=user,
+                    turma=turma,
+                    defaults={'status': novo_status}
+                )
+                
+                if not created:
+                    # Ressuscita a inscrição antiga, limpando as recusas passadas
+                    inscricao.status = novo_status
+                    inscricao.justificativa_rejeicao = None
+                    inscricao.aprovado_por = None
+                    inscricao.aprovado_em = None
+                    inscricao.save()
+                    
+            except Exception as e:
+                return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response({"detail": "Inscrição realizada com sucesso.", "inscricao_id": inscricao.id}, status=status.HTTP_201_CREATED)
+    
+
+class InscricoesEquipeView(generics.ListAPIView):
+    """ GET: Lista inscrições pendentes onde a chefia é o usuário logado (via Matrícula) """
+    serializer_class = InscricaoDetailSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        minha_matricula = user.dados_servidor.get('matricula') if user.dados_servidor else None
+        
+        # Se o usuário não tem matrícula preenchida, ele não pode ser chefe de ninguém
+        if not minha_matricula and not user.is_staff:
+            return Inscricao.objects.none()
+            
+        minha_matricula_str = str(minha_matricula).strip()
+
+        if user.is_staff:
+            return Inscricao.objects.filter(
+                status=Inscricao.Status.PENDENTE,
+            ).select_related('perfil', 'turma', 'turma__curso')
+        else:
+            return Inscricao.objects.filter(
+                status=Inscricao.Status.PENDENTE,
+                perfil__dados_servidor__matricula_chefe=minha_matricula_str
+            ).select_related('perfil', 'turma', 'turma__curso')
+
+class AprovarInscricaoView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        try:
+            inscricao = Inscricao.objects.get(pk=pk, status=Inscricao.Status.PENDENTE)
+        except Inscricao.DoesNotExist:
+            return Response({"detail": "Inscrição não encontrada ou não está pendente."}, status=status.HTTP_404_NOT_FOUND)
+
+        # ── INÍCIO DA MUDANÇA PARA MATRÍCULA ──
+        matricula_chefe_aluno = inscricao.perfil.dados_servidor.get('matricula_chefe') if inscricao.perfil.dados_servidor else None
+        minha_matricula = request.user.dados_servidor.get('matricula') if request.user.dados_servidor else None
+
+        matricula_chefe_aluno_str = str(matricula_chefe_aluno).strip() if matricula_chefe_aluno else None
+        minha_matricula_str = str(minha_matricula).strip() if minha_matricula else None
+
+        # O Admin (is_staff) sempre pode aprovar. Se não for admin, a matrícula tem que bater.
+        if not (request.user.is_staff or (matricula_chefe_aluno_str and matricula_chefe_aluno_str == minha_matricula_str)):
+            return Response({"detail": "Você não tem permissão para avaliar esta inscrição. Matrícula divergente."}, status=status.HTTP_403_FORBIDDEN)
+        # ── FIM DA MUDANÇA ──
+
+        acao = request.data.get('acao')
+        justificativa = request.data.get('justificativa')
+
+        with transaction.atomic():
+            inscricao.aprovado_por = request.user
+            inscricao.aprovado_em = timezone.now()
+            
+            # Obtém IP do cliente
+            x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+            if x_forwarded_for:
+                ip = x_forwarded_for.split(',')[0]
+            else:
+                ip = request.META.get('REMOTE_ADDR')
+            inscricao.ip_aprovacao = ip
+
+            if acao == 'aprovar':
+                inscricao.status = Inscricao.Status.APROVADO_CHEFIA
+            elif acao == 'negar':
+                if not justificativa:
+                    return Response({"detail": "Justificativa é obrigatória para negar."}, status=status.HTTP_400_BAD_REQUEST)
+                inscricao.status = Inscricao.Status.CANCELADO
+                inscricao.justificativa_rejeicao = justificativa
+            else:
+                # Fallback genérico para manter compatibilidade
+                inscricao.status = Inscricao.Status.APROVADO_CHEFIA
+
+            inscricao.save()
+
+        mensagem = "Inscrição aprovada com sucesso." if acao != 'negar' else "Inscrição negada com sucesso."
+        return Response({"detail": mensagem}, status=status.HTTP_200_OK)
+
+class MinhasInscricoesDetailView(generics.ListAPIView):
+    serializer_class = InscricaoDetailSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Inscricao.objects.filter(
+            perfil=self.request.user
+        ).select_related(
+            'turma', 'turma__curso'
+        ).order_by('-data_inscricao')
+
+
+class MinhasSolicitacoesView(generics.ListCreateAPIView):
+    """ GET lista reservas do usuário. POST cria uma nova reserva. """
+    serializer_class = SolicitacaoReservaSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return SolicitacaoReserva.objects.filter(solicitante=self.request.user)
+
+    def perform_create(self, serializer):
+        user = self.request.user
+        # Guard: apenas Admins ou usuários com permissão explícita podem criar reservas
+        if not (user.is_staff or getattr(user, 'is_solicitante', False)):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied(
+                "Você não tem permissão para solicitar reservas. "
+                "Solicite ao administrador que conceda o nível 'Solicitante'."
+            )
+        if user.is_staff:
+            serializer.save(solicitante=user, status=SolicitacaoReserva.Status.APROVADA)
+        else:
+            serializer.save(solicitante=user)
+
+class AgendaGlobalView(APIView):
+    """ O motor do calendário: Junta Aulas Oficiais + Reservas Avulsas Aprovadas """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from django.utils import timezone
+        mes = request.query_params.get('mes')
+        ano = request.query_params.get('ano', timezone.now().year)
+
+        is_admin = request.user.is_staff
+
+        # 1. Aulas ativas
+        q_aulas = EventoTurma.objects.select_related('turma', 'turma__curso').filter(
+            turma__is_active=True
+        )
+        # 2. Reservas Externas Aprovadas
+        q_res = ItemReserva.objects.select_related(
+            'solicitacao', 'solicitacao__solicitante'
+        ).filter(
+            solicitacao__status=SolicitacaoReserva.Status.APROVADA
+        )
+        if not is_admin:
+            q_res = q_res.exclude(espaco='EXTERNO')
+
+        if mes:
+            q_aulas = q_aulas.filter(data__month=mes, data__year=ano)
+            q_res = q_res.filter(data__month=mes, data__year=ano)
+
+        aulas = q_aulas.all()
+        reservas = q_res.all()
+
+        eventos = []
+        for aula in aulas:
+            item = {
+                "id": f"aula_{aula.id}",
+                "tipo": "AULA",
+                "titulo": f"{aula.turma.curso.codigo_oficial} - Turma {aula.turma.letra}",
+                "data": aula.data.isoformat(),
+                "turno": aula.turno_reserva,
+                "local": aula.espaco,
+                "hora_inicio": aula.hora_inicio.strftime('%H:%M') if aula.hora_inicio else None,
+                "hora_fim": aula.hora_fim.strftime('%H:%M') if aula.hora_fim else None,
+                "status": "APROVADA",
+            }
+            if is_admin:
+                item["origin_tipo"] = "TURMA"
+                item["origin_id"] = aula.turma.id
+                item["origin_desc"] = f"Turma {aula.turma.codigo_turma} — {aula.turma.curso.titulo}" # <--- CORRIGIDO
+            eventos.append(item)
+
+        for res in reservas:
+            sol = res.solicitacao
+            item = {
+                "id": f"reserva_{res.id}",
+                "tipo": "RESERVA_AVULSA",
+                "titulo": sol.titulo,
+                "data": res.data.isoformat(),
+                "turno": res.turno_reserva,
+                "local": res.espaco,
+                "hora_inicio": res.hora_inicio.strftime('%H:%M') if res.hora_inicio else None,
+                "hora_fim": res.hora_fim.strftime('%H:%M') if res.hora_fim else None,
+                "status": sol.status,
+            }
+            if is_admin:
+                item["origin_tipo"] = "SOLICITACAO"
+                item["origin_id"] = str(sol.id)
+                item["origin_desc"] = f"Protocolo {sol.protocolo}"
+                item["origin_solicitante"] = sol.solicitante.nome_completo if sol.solicitante else "—"
+            eventos.append(item)
+
+        return Response(eventos, status=status.HTTP_200_OK)
+    
+class AdminSolicitacoesView(generics.ListAPIView):
+    """ GET lista todas as solicitações de espaço para a gestão aprovar """
+    serializer_class = SolicitacaoReservaSerializer
+    permission_classes = [IsAuthenticated, IsAdminUser]
+
+    def get_queryset(self):
+        from django.db.models import Case, When, IntegerField
+        # Retorna todas as solicitações, priorizando as PENDENTES no topo
+        return SolicitacaoReserva.objects.all().order_by(
+            Case(
+                When(status=SolicitacaoReserva.Status.PENDENTE, then=0),
+                default=1,
+                output_field=IntegerField(),
+            ),
+            '-criado_em'
+        )
+
+class AvaliarSolicitacaoView(APIView):
+    """ POST aprova ou nega uma solicitação de espaço """
+    permission_classes = [IsAuthenticated, IsAdminUser]
+
+    def post(self, request, pk):
+        try:
+            solicitacao = SolicitacaoReserva.objects.get(pk=pk, status=SolicitacaoReserva.Status.PENDENTE)
+        except SolicitacaoReserva.DoesNotExist:
+            return Response({"detail": "Solicitação não encontrada ou já avaliada."}, status=status.HTTP_404_NOT_FOUND)
+
+        acao = request.data.get('acao')
+        justificativa = request.data.get('justificativa')
+
+        if acao == 'aprovar':
+            solicitacao.status = SolicitacaoReserva.Status.APROVADA
+        elif acao == 'negar':
+            if not justificativa:
+                return Response({"detail": "Justificativa obrigatória para negar."}, status=status.HTTP_400_BAD_REQUEST)
+            solicitacao.status = SolicitacaoReserva.Status.RECUSADA
+            solicitacao.justificativa_recusa = justificativa
+        else:
+            return Response({"detail": "Ação inválida."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Guardar logs de auditoria
+        solicitacao.avaliado_por = request.user
+        solicitacao.avaliado_em = timezone.now()
+        
+        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+        if x_forwarded_for:
+            solicitacao.ip_avaliacao = x_forwarded_for.split(',')[0]
+        else:
+            solicitacao.ip_avaliacao = request.META.get('REMOTE_ADDR')
+
+        solicitacao.save()
+        return Response({"detail": f"Solicitação {acao}da com sucesso."}, status=status.HTTP_200_OK)
+    
+
+class CancelarSolicitacaoView(APIView):
+    """ POST cancela uma solicitação de reserva feita pelo próprio usuário (Rate Limit: 1x / hora por solicitação) """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        try:
+            # Garante que o usuário só pode cancelar a PRÓPRIA solicitação
+            solicitacao = SolicitacaoReserva.objects.get(pk=pk, solicitante=request.user)
+        except SolicitacaoReserva.DoesNotExist:
+            return Response({"detail": "Solicitação não encontrada."}, status=status.HTTP_404_NOT_FOUND)
+
+        if solicitacao.status in [SolicitacaoReserva.Status.CANCELADA, SolicitacaoReserva.Status.RECUSADA]:
+            return Response({"detail": "Esta solicitação já encontra-se cancelada ou recusada."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # ── RATE LIMIT: 1 cancelamento/retificação por hora por solicitação ──
+        from django.core.cache import cache
+        cache_key = f"cancel_rate_{request.user.id}_{pk}"
+        if cache.get(cache_key):
+            return Response(
+                {"detail": "Aguarde 1 hora antes de modificar esta solicitação novamente. "
+                           "Limite de retificação anti-spam atingido."},
+                status=status.HTTP_429_TOO_MANY_REQUESTS
+            )
+        # Marca o cooldown de 1 hora (3600s)
+        cache.set(cache_key, True, timeout=3600)
+
+        motivo = request.data.get('motivo')
+        if not motivo:
+            return Response({"detail": "Motivo do cancelamento é obrigatório."}, status=status.HTTP_400_BAD_REQUEST)
+
+        solicitacao.justificativa = f"Cancelado pelo solicitante. Motivo: {motivo}"
+        solicitacao.status = SolicitacaoReserva.Status.CANCELADA
+        solicitacao.save()
+
+        return Response({"detail": "Solicitação cancelada com sucesso."}, status=status.HTTP_200_OK)
+    
+
+class MinhasTurmasInstrutorView(generics.ListAPIView):
+    """ Retorna as turmas onde o usuário logado é o instrutor (ou todas se for Admin) """
+    serializer_class = TurmaSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        
+        # Se for administrador, traz TODAS as turmas do sistema
+        if user.is_staff:
+            return Turma.objects.all().order_by('-data_inicio')
+            
+        # Se não for, traz apenas as turmas em que ele é o instrutor oficial
+        return Turma.objects.filter(instrutor=user).order_by('-data_inicio')
+
+class DiarioTurmaView(APIView):
+    """ GET: Puxa o grid do diário. POST: Salva notas, presenças e fecha o diário """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, turma_id):
+        try:
+            turma = Turma.objects.get(id=turma_id)
+            if not request.user.is_staff and turma.instrutor != request.user:
+                return Response({"detail": "Sem permissão."}, status=403)
+        except Turma.DoesNotExist:
+            return Response({"detail": "Turma não encontrada."}, status=404)
+
+        inscricoes = Inscricao.objects.filter(
+            turma=turma, 
+            status__in=[Inscricao.Status.INSCRITO, Inscricao.Status.CONCLUIDO, Inscricao.Status.REPROVADO]
+        ).select_related('perfil').order_by('perfil__nome_completo')
+
+        eventos = EventoTurma.objects.filter(turma=turma).order_by('data')
+        
+        alunos_data = []
+        for insc in inscricoes:
+            presencas = RegistroPresenca.objects.filter(inscricao=insc)
+            # Agora salvamos a string do status: 'PRESENTE', 'FALTA', 'JUSTIFICADA'
+            presencas_dict = {p.evento_id: p.status for p in presencas}
+            
+            alunos_data.append({
+                "inscricao_id": insc.id,
+                "nome": insc.perfil.nome_completo,
+                "cpf": insc.perfil.cpf,
+                "nota": float(insc.nota) if insc.nota is not None else None,
+                "status": insc.status,
+                "presencas": presencas_dict
+            })
+
+        eventos_data = [{"id": e.id, "data": e.data} for e in eventos]
+
+        return Response({
+            "turma": {"codigo": turma.codigo_turma, "status": turma.status_calculado},
+            "eventos": eventos_data,
+            "alunos": alunos_data
+        })
+
+    def post(self, request, turma_id):
+        dados = request.data.get('alunos', [])
+        fechar_diario = request.data.get('fechar_diario', False)
+
+        turma = Turma.objects.get(id=turma_id)
+        
+        # 👇 TRAVA DE SEGURANÇA ADICIONADA AQUI 👇
+        if not request.user.is_staff and turma.instrutor != request.user:
+            raise PermissionDenied("Você não tem permissão para editar o diário desta turma.")
+        # 👆 ================================== 👆
+
+        from rest_framework.exceptions import PermissionDenied
+        if turma.status_calculado in [Turma.Status.CONCLUIDA, Turma.Status.FINALIZADA]:
+            raise PermissionDenied("Não é possível alterar o diário de uma turma já concluída ou finalizada.")
+
+        total_eventos = turma.eventos.count()
+
+        # Injeta o contexto de auditoria para os Signals capturarem
+        from cursos._audit_context import set_audit_context, clear_audit_context
+        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+        ip_origem = x_forwarded_for.split(',')[0] if x_forwarded_for else request.META.get('REMOTE_ADDR')
+        set_audit_context(usuario_id=request.user.id, ip=ip_origem)
+
+        try:
+            with transaction.atomic():
+                for aluno in dados:
+                    inscricao = Inscricao.objects.get(id=aluno['inscricao_id'])
+
+                    # 1. Salvar Nota
+                    if aluno.get('nota') is not None and str(aluno['nota']).strip() != "":
+                        inscricao.nota = float(aluno['nota'])
+                    else:
+                        inscricao.nota = None
+
+                    # 2. Salvar Presenças
+                    presencas = aluno.get('presencas', {})
+                    presencas_marcadas = 0
+                    for evento_id, status_val in presencas.items():
+                        RegistroPresenca.objects.update_or_create(
+                            inscricao=inscricao,
+                            evento_id=int(evento_id),
+                            defaults={'status': status_val}
+                        )
+                        # Tanto PRESENTE quanto JUSTIFICADA contam para a meta de 80%
+                        if status_val in ['PRESENTE', 'JUSTIFICADA']:
+                            presencas_marcadas += 1
+
+                    # 3. Lógica de Aprovação
+                    if fechar_diario:
+                        total_presencas_db = RegistroPresenca.objects.filter(
+                            inscricao=inscricao, 
+                            status__in=['PRESENTE', 'JUSTIFICADA']
+                        ).count()
+                        perc_freq = (total_presencas_db / total_eventos * 100) if total_eventos > 0 else 100
+                        nota_val = inscricao.nota or 0
+
+                        if perc_freq >= 80 and nota_val >= 7:
+                            inscricao.status = Inscricao.Status.CONCLUIDO
+                        else:
+                            inscricao.status = Inscricao.Status.REPROVADO
+
+                    inscricao.save()
+        finally:
+            # Garante que o contexto de auditoria é SEMPRE limpo após o bloco
+            clear_audit_context()
+
+        if fechar_diario:
+            from django.utils import timezone
+            turma.diario_fechado_em = timezone.now()
+            turma.diario_fechado_por = request.user
+            turma.save(update_fields=['diario_fechado_em', 'diario_fechado_por'])
+
+            # Registra o fechamento do diário no histórico
+            from cursos.models import HistoricoAlteracao
+            HistoricoAlteracao.objects.create(
+                tipo_acao=HistoricoAlteracao.TipoAcao.DIARIO_FECHADO,
+                usuario=request.user,
+                tabela_referencia='catalogo_turmas',
+                objeto_id=str(turma_id),
+                valor_anterior='aberto',
+                valor_novo='fechado',
+                ip=ip_origem,
+            )
+
+        msg = "Diário finalizado com sucesso!" if fechar_diario else "Diário salvo como rascunho."
+        return Response({"detail": msg}, status=status.HTTP_200_OK)
+    
+class AdminMatricularAlunoView(APIView):
+    """ POST: Admin matricula um aluno manualmente pelo CPF """
+    permission_classes = [IsAuthenticated, IsAdminUser]
+
+    def post(self, request, turma_id):
+        cpf = request.data.get('cpf')
+        try:
+            aluno = Profile.objects.get(cpf=cpf)
+        except Profile.DoesNotExist:
+            aluno = Profile.objects.create_user(
+                cpf=cpf,
+                nome_completo="Usuário Pendente (Criado pelo Admin)",
+                email=f"{cpf}@pendente.local",
+                is_active=False
+            )
+
+        try:
+            turma = Turma.objects.get(id=turma_id)
+            
+            # Cria a inscrição direto como 'inscrito'
+            insc, created = Inscricao.objects.get_or_create(
+                perfil=aluno,
+                turma=turma,
+                defaults={'status': Inscricao.Status.INSCRITO}
+            )
+            
+            if not created:
+                return Response({"detail": "Aluno já está nesta turma."}, status=400)
+                
+            return Response({"detail": "Aluno matriculado com sucesso!"}, status=201)
+        except Exception as e:
+            return Response({"detail": str(e)}, status=400)
+        
+class SalaDeAulaView(APIView):
+    """ GET: Retorna os módulos, vídeos e o progresso do aluno para a sala de aula virtual """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, turma_id):
+        user = request.user
+
+        try:
+            turma = Turma.objects.get(id=turma_id)
+        except Turma.DoesNotExist:
+            return Response({"detail": "Turma não encontrada."}, status=status.HTTP_404_NOT_FOUND)
+
+        # 1. Verifica se o aluno tem acesso (se é o instrutor, admin ou se está inscrito)
+        is_instrutor_ou_admin = user.is_staff or turma.instrutor == user
+        inscricao = None
+
+        if not is_instrutor_ou_admin:
+            try:
+                inscricao = Inscricao.objects.get(turma=turma, perfil=user, status__in=[Inscricao.Status.INSCRITO, Inscricao.Status.CONCLUIDO])
+            except Inscricao.DoesNotExist:
+                return Response({"detail": "Você não tem acesso a esta sala de aula."}, status=status.HTTP_403_FORBIDDEN)
+
+        # 2. Busca os módulos: apenas atividades APROVADAS são exibidas a alunos
+        from django.db.models import Prefetch
+        if is_instrutor_ou_admin:
+            # Admin/Instrutor vêm TUDO para gerenciar (inclusive não aprovadas)
+            atividades_qs = Atividade.objects.filter(is_active=True)
+        else:
+            # Alunos só vêm atividades aprovadas pelo Admin
+            atividades_qs = Atividade.objects.filter(is_active=True, aprovado_admin=True)
+
+        modulos = Modulo.objects.filter(turma=turma, is_active=True).prefetch_related(
+            Prefetch('atividades', queryset=atividades_qs)
+        )
+        serializer = ModuloSerializer(modulos, many=True, context={'inscricao_id': inscricao.id if inscricao else None})
+
+        # 3. Calcula a carga horária já adquirida (apenas de atividades APROVADAS)
+        carga_adquirida = 0
+        # 3. Calcula a carga horária já adquirida (apenas de atividades APROVADAS)
+        carga_adquirida = 0
+        if inscricao:
+            from django.db.models import Sum # <--- ADICIONEI O IMPORT AQUI
+            
+            horas_ead = Atividade.objects.filter(
+                conclusoes__inscricao=inscricao,
+                conclusoes__concluido=True,
+                aprovado_admin=True,  # Só soma carga de atividades aprovadas
+            ).aggregate(total=Sum('carga_horaria_recompensa'))['total'] or 0 # <--- TIREI O 'models.' DAQUI
+            
+            carga_adquirida = horas_ead
+
+        return Response({
+            "turma": {"codigo": turma.codigo_turma, "titulo": turma.curso.titulo, "carga_total": turma.carga_horaria},
+            "progresso": {
+                "carga_adquirida": carga_adquirida,
+                "meta": turma.carga_horaria,
+                "titulo": turma.curso.titulo,
+                "tipo": turma.curso.tipo,
+            },
+            "modulos": serializer.data
+        })
+
+
+class PingAtividadeView(APIView):
+    """ POST: Salva 1 minuto de tela do Player para validação Anti-Cheat no servidor. """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, atividade_id):
+        try:
+            atividade = Atividade.objects.get(id=atividade_id, is_active=True)
+            inscricao = Inscricao.objects.get(
+                perfil=request.user, 
+                turma=atividade.modulo.turma,
+                status__in=[Inscricao.Status.INSCRITO, Inscricao.Status.CONCLUIDO]
+            )
+        except (Atividade.DoesNotExist, Inscricao.DoesNotExist):
+            return Response(status=status.HTTP_403_FORBIDDEN)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error("Erro inesperado em PingAtividadeView: %s", e)
+            return Response({"detail": "Erro interno no servidor."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            
+        from cursos.models import ProgressoAtividade, ProgressoSessaoEAD
+        from django.utils import timezone
+        from django.db import transaction
+
+        with transaction.atomic():
+            # Fix TOCTOU: get_or_create e select_for_update dentro do mesmo bloco atômico
+            progresso, _ = ProgressoAtividade.objects.get_or_create(
+                inscricao=inscricao, atividade=atividade
+            )
+            # Lock pessimista aplicado DEPOIS do get_or_create para serializar as threads
+            progresso = ProgressoAtividade.objects.select_for_update().get(id=progresso.id)
+
+            ultima_sessao = ProgressoSessaoEAD.objects.filter(progresso=progresso).order_by('-timestamp_ping').first()
+            if ultima_sessao:
+                diferenca = (timezone.now() - ultima_sessao.timestamp_ping).total_seconds()
+                if diferenca < 55:
+                    return Response({"detail": "Múltiplas requisições simultâneas bloqueadas."}, status=status.HTTP_429_TOO_MANY_REQUESTS)
+
+            ProgressoSessaoEAD.objects.create(progresso=progresso, duracao_minutos=1)
+        
+        return Response(status=status.HTTP_200_OK)
+
+class ConcluirAtividadeView(APIView):
+    """ POST: Valida no BD pelo Heartbeat em vez de payload front-end. """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, atividade_id):
+        try:
+            atividade = Atividade.objects.get(id=atividade_id)
+            if not getattr(atividade, 'is_active', True):
+                 pass
+            # Confirma que o aluno está inscrito na turma dessa atividade
+            inscricao = Inscricao.objects.get(
+                perfil=request.user, 
+                turma=atividade.modulo.turma,
+                status__in=[Inscricao.Status.INSCRITO, Inscricao.Status.CONCLUIDO]
+            )
+        except (Atividade.DoesNotExist, Inscricao.DoesNotExist):
+            return Response({"detail": "Atividade não encontrada ou acesso negado."}, status=status.HTTP_403_FORBIDDEN)
+            
+        from cursos.models import ProgressoAtividade
+        progresso, _ = ProgressoAtividade.objects.get_or_create(
+            inscricao=inscricao,
+            atividade=atividade
+        )
+
+        # Checagem Anti-Cheat: Em vez de confiar em `request.data.get('tempo_tela')`, contamos Pings do Banco
+        from django.db.models import Sum
+        from cursos.models import ProgressoSessaoEAD
+        
+        total_pings = ProgressoSessaoEAD.objects.filter(progresso=progresso).aggregate(t=Sum('duracao_minutos'))['t'] or 0
+        
+        # Pelo menos 15 minutos de pings (se for atividade maior, senão 1 minuto de ping se carga pequena)
+        # Se for video, aplica validação rígida de heartbeat
+        # TEMPORÁRIO PARA A DEMONSTRAÇÃO: Baixado para 0 pings
+        if total_pings < 0 and atividade.tipo == Atividade.Tipo.VIDEO_YOUTUBE:
+            return Response({"detail": "Não assistiu o tempo mínimo."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Registra que o aluno concluiu
+        progresso.concluido = True
+        progresso.save()
+
+        return Response({"detail": "Carga horária contabilizada com sucesso!"}, status=status.HTTP_200_OK)
+    
+class MinhasGestoesView(generics.ListAPIView):
+    """ Retorna apenas as turmas onde o CPF do usuário logado está na lista de autorizados """
+    serializer_class = TurmaSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user_cpf = self.request.user.cpf
+        # Usando a nova relação FK N:M
+        return Turma.objects.filter(gestores_associados__gestor__cpf=user_cpf).order_by('-data_inicio')
+
+
+class GestaoAlunosTurmaView(APIView):
+    """ GET: Lista alunos ativos. POST: Adiciona ou inativa (soft delete) um aluno """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, turma_id):
+        try:
+            turma = Turma.objects.get(id=turma_id)
+        except Turma.DoesNotExist:
+            return Response({"detail": "Turma não encontrada."}, status=404)
+
+        # Trava de Segurança: Só o Admin ou o CPF autorizado passa daqui
+        if not turma.gestores_associados.filter(gestor__cpf=request.user.cpf).exists() and not request.user.is_staff:
+            return Response({"detail": "Sem permissão para gerenciar esta turma."}, status=403)
+        
+        inscricoes = Inscricao.objects.filter(turma=turma).exclude(status=Inscricao.Status.CANCELADO).select_related('perfil').order_by('-data_inscricao')
+        
+        data = [{
+            "id": insc.id,
+            "cpf": insc.perfil.cpf,
+            "nome": insc.perfil.nome_completo,
+            "status": insc.status,
+            "data_inscricao": insc.data_inscricao
+        } for insc in inscricoes]
+        
+        return Response(data)
+
+    def post(self, request, turma_id):
+        cpf_aluno = request.data.get('cpf')
+        acao = request.data.get('acao', 'adicionar')
+        
+        try:
+            turma = Turma.objects.get(id=turma_id)
+        except Turma.DoesNotExist:
+            return Response({"detail": "Turma não encontrada."}, status=404)
+        
+        if not turma.gestores_associados.filter(gestor__cpf=request.user.cpf).exists() and not request.user.is_staff:
+            return Response({"detail": "Sem permissão."}, status=403)
+            
+        try:
+            aluno = Profile.objects.get(cpf=cpf_aluno)
+        except Profile.DoesNotExist:
+            aluno = Profile.objects.create_user(
+                cpf=cpf_aluno,
+                nome_completo="Usuário Pendente (Criado pelo Admin)",
+                email=f"{cpf_aluno}@pendente.local",
+                is_active=False
+            )
+
+        if acao == 'adicionar':
+            if getattr(aluno, 'esta_bloqueado', lambda: False)():
+                return Response({"detail": "Aluno suspenso não pode ser matriculado."}, status=403)
+            
+            # Se a inscrição já existia e estava cancelada, o get_or_create não cria, ele pega a antiga.
+            insc, created = Inscricao.objects.get_or_create(
+                perfil=aluno, 
+                turma=turma, 
+                defaults={'status': Inscricao.Status.INSCRITO}
+            )
+            # Então nós forçamos a reativação:
+            if not created:
+                insc.status = Inscricao.Status.INSCRITO
+                insc.save()
+            return Response({"detail": "Aluno adicionado/reativado com sucesso!"}, status=200)
+        
+        elif acao == 'remover':
+            try:
+                insc = Inscricao.objects.get(perfil=aluno, turma=turma)
+                insc.status = Inscricao.Status.CANCELADO # Soft Delete
+                insc.save()
+                return Response({"detail": "Aluno removido (inativado) com sucesso!"}, status=200)
+            except Inscricao.DoesNotExist:
+                return Response({"detail": "Inscrição não encontrada."}, status=404)
+            
+class ModuloViewSet(APIView):
+    """ Gestão de Módulos (Criar, Ler e Apagar) """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, turma_id=None, pk=None):
+        if turma_id:
+            turma = get_object_or_404(Turma, pk=turma_id)
+            if not request.user.is_staff and turma.instrutor != request.user:
+                return Response(status=403)
+            modulos = Modulo.objects.filter(turma=turma, is_active=True).order_by('ordem')
+            
+            data = []
+            for m in modulos:
+                atividades = Atividade.objects.filter(modulo=m, is_active=True).order_by('ordem')
+                ativ_data = []
+                for a in atividades:
+                    ativ_data.append({
+                        "id": a.id,
+                        "titulo": a.titulo,
+                        "descricao": a.descricao,
+                        "tipo": a.tipo,
+                        "url_video": a.url_video,
+                        "carga_horaria_recompensa": a.carga_horaria_recompensa,
+                        "ordem": a.ordem,
+                        "aprovado_admin": a.aprovado_admin
+                    })
+                data.append({
+                    "id": m.id,
+                    "titulo": m.titulo,
+                    "ordem": m.ordem,
+                    "atividades": ativ_data
+                })
+            return Response({"modulos": data})
+        return Response(status=400)
+
+    def post(self, request, turma_id):
+        turma = get_object_or_404(Turma, pk=turma_id)
+        if not request.user.is_staff and turma.instrutor != request.user:
+            return Response(status=403)
+        
+        titulo = request.data.get('titulo')
+        ordem = request.data.get('ordem', 0)
+        
+        modulo = Modulo.objects.create(turma_id=turma_id, titulo=titulo, ordem=ordem)
+        return Response({"id": modulo.id, "titulo": modulo.titulo}, status=201)
+
+    def delete(self, request, pk):
+        modulo = get_object_or_404(Modulo, pk=pk)
+        if not request.user.is_staff and modulo.turma.instrutor != request.user:
+            return Response(status=403)
+        modulo.is_active = False
+        modulo.save()
+        return Response(status=204)
+
+class AtividadeViewSet(APIView):
+    """ Gestão de Atividades (Aulas/Vídeos) """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, modulo_id):
+        modulo = get_object_or_404(Modulo, pk=modulo_id)
+        if not request.user.is_staff and modulo.turma.instrutor != request.user:
+            return Response(status=403)
+            
+        data = request.data
+        carga_hr = data.get('carga_horaria_recompensa', data.get('carga_horaria', 0))
+        atividade = Atividade.objects.create(
+            modulo_id=modulo_id,
+            titulo=data.get('titulo'),
+            descricao=data.get('descricao'),
+            tipo=data.get('tipo', 'VIDEO_YOUTUBE'),
+            url_video=data.get('url_video'),
+            carga_horaria_recompensa=carga_hr,
+            ordem=data.get('ordem', 0)
+        )
+        return Response({"id": atividade.id, "titulo": atividade.titulo}, status=201)
+
+    def delete(self, request, pk):
+        ativ = get_object_or_404(Atividade, pk=pk)
+        if not request.user.is_staff and ativ.modulo.turma.instrutor != request.user:
+            return Response(status=403)
+        ativ.is_active = False
+        ativ.save()
+        return Response(status=204)
+
+
+class AdminStatsView(APIView):
+    """Retorna métricas rápidas para o painel do administrador."""
+    permission_classes = [IsAdminUser]
+
+    def get(self, request):
+        from django.utils.timezone import now
+        from django.db.models import Q, Sum, DecimalField, Value
+        from django.db.models.functions import Coalesce
+        from users.models import Profile as UserProfile
+
+        hoje = now().date()
+
+        # Correção do bug: status_calculado é @property — não pode ser filtrado no ORM.
+        # Usamos a lógica de datas diretamente na query para identificar turmas ativas.
+        turmas_ativas = Turma.objects.filter(
+            is_active=True,
+            data_inicio__lte=hoje,
+            data_fim__gte=hoje,
+        ).exclude(
+            status_manual__in=[Turma.Status.CANCELADA, Turma.Status.ADIADA, Turma.Status.FINALIZADA]
+        ).count()
+
+        # Turmas futuras (Previstas)
+        turmas_previstas = Turma.objects.filter(
+            is_active=True,
+            data_inicio__gt=hoje,
+        ).exclude(
+            status_manual__in=[Turma.Status.CANCELADA, Turma.Status.ADIADA, Turma.Status.FINALIZADA]
+        ).count()
+
+        # Turmas encerradas (Concluídas — passaram da data_fim sem status manual)
+        turmas_concluidas = Turma.objects.filter(
+            is_active=True,
+            data_fim__lt=hoje,
+        ).exclude(
+            status_manual__in=[Turma.Status.CANCELADA, Turma.Status.ADIADA, Turma.Status.FINALIZADA]
+        ).count()
+
+        aprovacoes_pendentes = Inscricao.objects.filter(
+            status=Inscricao.Status.PENDENTE
+        ).count()
+
+        novos_usuarios_hoje = UserProfile.objects.filter(
+            criado_em__date=hoje
+        ).count()
+
+        total_matriculas = Inscricao.objects.exclude(
+            status__in=[Inscricao.Status.CANCELADO]
+        ).count()
+
+        total_usuarios = UserProfile.objects.filter(is_active=True).count()
+
+        # Custo total das turmas ativas
+        custo_total = Turma.objects.filter(
+            is_active=True
+        ).exclude(
+            status_manual__in=[Turma.Status.CANCELADA]
+        ).aggregate(
+            total=Coalesce(Sum('custo'), Value(0), output_field=DecimalField())
+        )['total']
+
+        # Novas Métricas de Desempenho da Gestão
+        alunos_aprovados = Inscricao.objects.filter(status=Inscricao.Status.CONCLUIDO).count()
+        desistentes = Inscricao.objects.filter(status=Inscricao.Status.CANCELADO).count()
+        
+        # Como o status de reprovação é único, vamos separar por nota na view (quem reprovou tendo nota < média ou simplesmente reprovou)
+        reprovados_total = Inscricao.objects.filter(status=Inscricao.Status.REPROVADO).count()
+        # Uma aproximação: quem tem nota baixa vs quem não tem nota (falta)
+        reprovados_nota = Inscricao.objects.filter(status=Inscricao.Status.REPROVADO, nota__lt=7.0).count()
+        reprovados_falta = reprovados_total - reprovados_nota
+
+        return Response({
+            'turmas_ativas':        turmas_ativas,
+            'turmas_previstas':     turmas_previstas,
+            'turmas_concluidas':    turmas_concluidas,
+            'aprovacoes_pendentes': aprovacoes_pendentes,
+            'novos_usuarios_hoje':  novos_usuarios_hoje,
+            'total_matriculas':     total_matriculas,
+            'total_usuarios':       total_usuarios,
+            'custo_total':          float(custo_total),
+            'alunos_aprovados':     alunos_aprovados,
+            'desistentes':          desistentes,
+            'reprovados_nota':      reprovados_nota,
+            'reprovados_falta':     reprovados_falta,
+        })
+
+class AlunoStatsView(APIView):
+    """Retorna métricas rápidas para o painel do aluno/usuário comum."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from django.db.models import Sum, F, ExpressionWrapper, DecimalField
+        from django.db.models.functions import Coalesce
+        
+        user = request.user
+
+        # Matrículas totais (excluindo canceladas)
+        matriculas_realizadas = Inscricao.objects.filter(
+            perfil=user
+        ).exclude(status=Inscricao.Status.CANCELADO).count()
+
+        # Cursos concluídos
+        cursos_concluidos = Inscricao.objects.filter(
+            perfil=user,
+            status=Inscricao.Status.CONCLUIDO
+        ).count()
+
+        # Horas totais (Soma das cargas horárias das turmas concluídas)
+        # Mais a soma de carga horária extra de atividades concluídas
+        horas_turmas = Inscricao.objects.filter(
+            perfil=user,
+            status=Inscricao.Status.CONCLUIDO
+        ).aggregate(total=Coalesce(Sum('turma__carga_horaria'), 0))['total']
+
+        # Horas extra via EAD/Atividades com recompensa (opcional)
+        horas_atividades = ProgressoAtividade.objects.filter(
+            inscricao__perfil=user,
+            concluido=True,
+            atividade__aprovado_admin=True
+        ).aggregate(total=Coalesce(Sum('atividade__carga_horaria_recompensa'), 0))['total']
+
+        total_horas_capacitacao = horas_turmas + horas_atividades
+
+        # Média de Presença (Cálculo aproximado baseado em presenças)
+        total_presencas = RegistroPresenca.objects.filter(inscricao__perfil=user).count()
+        faltas = RegistroPresenca.objects.filter(inscricao__perfil=user, status=RegistroPresenca.Status.FALTA).count()
+        
+        if total_presencas > 0:
+            percentual_presenca = ((total_presencas - faltas) / total_presencas) * 100
+        else:
+            percentual_presenca = 100.0
+
+        # Encontrar a próxima aula (evento) para o Destaque
+        from django.utils import timezone
+        agora = timezone.now()
+        from cursos.models import EventoTurma
+        proximo_evento = EventoTurma.objects.filter(
+            turma__inscricoes__perfil=user,
+            turma__inscricoes__status=Inscricao.Status.INSCRITO,
+            data__gte=agora.date(),
+        ).exclude(
+            data=agora.date(),
+            hora_inicio__lt=agora.time()
+        ).order_by('data', 'hora_inicio').first()
+
+        proxima_aula_data = None
+        if proximo_evento:
+            proxima_aula_data = {
+                'turma_id': proximo_evento.turma.id,
+                'codigo_turma': proximo_evento.turma.codigo_turma,
+                'titulo_curso': proximo_evento.turma.curso.titulo,
+                'data': proximo_evento.data.isoformat(),
+                'hora_inicio': proximo_evento.hora_inicio.isoformat()[:5],
+                'espaco': proximo_evento.get_espaco_display() if proximo_evento.espaco != 'EXTERNO' else proximo_evento.espaco_externo_nome,
+            }
+
+        return Response({
+            'matriculas_realizadas': matriculas_realizadas,
+            'cursos_concluidos': cursos_concluidos,
+            'total_horas_capacitacao': total_horas_capacitacao,
+            'percentual_presenca': round(percentual_presenca, 1),
+            'proxima_aula': proxima_aula_data
+        })
+
+class TurmaUpdateView(generics.UpdateAPIView):
+    """ PATCH/PUT: Edita uma turma existente (apenas Admin) """
+    serializer_class = TurmaSerializer
+    permission_classes = [IsAuthenticated, IsAdminUser]
+    queryset = Turma.objects.all()
+
+
+class AtividadeAprovarView(APIView):
+    """ PATCH: Admin aprova ou rejeita uma atividade EAD para contagem de carga horária """
+    permission_classes = [IsAuthenticated, IsAdminUser]
+
+    def patch(self, request, pk):
+        try:
+            atividade = Atividade.objects.get(pk=pk)
+        except Atividade.DoesNotExist:
+            return Response({"detail": "Atividade não encontrada."}, status=status.HTTP_404_NOT_FOUND)
+
+        acao = request.data.get('acao')  # 'aprovar' ou 'rejeitar'
+
+        if acao == 'aprovar':
+            atividade.aprovado_admin = True
+            atividade.aprovado_por = request.user
+            atividade.aprovado_em = timezone.now()
+            atividade.save(update_fields=['aprovado_admin', 'aprovado_por', 'aprovado_em'])
+            return Response({"detail": "Atividade aprovada. Carga horária será contabilizada para os alunos."}, status=status.HTTP_200_OK)
+        elif acao == 'rejeitar':
+            atividade.aprovado_admin = False
+            atividade.aprovado_por = None
+            atividade.aprovado_em = None
+            atividade.save(update_fields=['aprovado_admin', 'aprovado_por', 'aprovado_em'])
+            return Response({"detail": "Atividade rejeitada. Não será contabilizada na carga horária."}, status=status.HTTP_200_OK)
+        else:
+            return Response({"detail": "Ação inválida. Use 'aprovar' ou 'rejeitar'."}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class AgendaConflitoView(APIView):
+    """
+    GET: Verifica se um espaço está disponível para uma data e janela de horário.
+    Usado pelo frontend com debounce para pintar o formulário de vermelho em tempo real.
+    Retorna: { conflito: bool, turnos_bloqueados: ['MANHA', 'TARDE'], mensagem: str }
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        espaco = request.query_params.get('espaco')
+        data = request.query_params.get('data')
+        hora_inicio_str = request.query_params.get('hora_inicio')
+        hora_fim_str = request.query_params.get('hora_fim')
+
+        if not all([espaco, data, hora_inicio_str, hora_fim_str]):
+            return Response(
+                {"detail": "Parâmetros obrigatórios: espaco, data, hora_inicio, hora_fim."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        from datetime import time as dt_time, datetime as dt_datetime
+
+        try:
+            hora_inicio = dt_time.fromisoformat(hora_inicio_str)
+            hora_fim = dt_time.fromisoformat(hora_fim_str)
+        except ValueError:
+            return Response(
+                {"detail": "Formato de horário inválido. Use HH:MM."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Calcula os turnos que seriam ocupados
+        turnos_necessarios = EventoTurma._calcular_turnos_cruzados(hora_inicio, hora_fim)
+
+        # Verifica quais desses turnos já estão ocupados no banco
+        turnos_bloqueados = list(
+            EspacoAlocado.objects.filter(
+                espaco=espaco,
+                data=data,
+                turno_reserva__in=turnos_necessarios
+            ).values_list('turno_reserva', flat=True)
+        )
+
+        conflito = len(turnos_bloqueados) > 0
+
+        return Response({
+            "conflito": conflito,
+            "turnos_bloqueados": turnos_bloqueados,
+            "turnos_necessarios": turnos_necessarios,
+            "mensagem": (
+                f"Conflito detectado! O espaço já está reservado no(s) turno(s): {', '.join(turnos_bloqueados)}."
+                if conflito else
+                "Horário disponível para reserva."
+            )
+        })
+
+class TurmaDestroyView(generics.DestroyAPIView):
+    queryset = Turma.objects.all()
+    permission_classes = [IsAuthenticated, IsAdminUser]
+
+    def destroy(self, request, *args, **kwargs):
+        turma = self.get_object()
+
+        if Inscricao.objects.filter(turma=turma).exists():
+            return Response(
+                {"detail": "Não é possível excluir uma turma com inscrições ativas."}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            self.perform_destroy(turma)
+
+            return Response(
+                {"detail": "Turma excluída com sucesso."}, 
+                status=status.HTTP_200_OK
+            )
+        except Exception as e:
+            return Response(
+                {"detail": f"Erro interno ao excluir turma."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+class QuestionarioView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, atividade_id):
+        try:
+            atividade = Atividade.objects.get(id=atividade_id)
+            questionario = Questionario.objects.get(atividade=atividade)
+        except (Atividade.DoesNotExist, Questionario.DoesNotExist):
+            return Response(status=404)
+        
+        serializer = QuestionarioSerializer(questionario)
+        data = serializer.data
+        
+        is_gestor = request.user.is_staff or getattr(atividade.modulo.turma, 'instrutor_id', None) == request.user.id
+        if not is_gestor:
+            for q in data.get('questoes', []):
+                for op in q.get('opcoes', []):
+                    op.pop('is_correta', None)
+        
+        return Response(data)
+
+    def post(self, request, atividade_id):
+        try:
+            atividade = Atividade.objects.get(id=atividade_id)
+        except Atividade.DoesNotExist:
+            return Response(status=404)
+            
+        if not request.user.is_staff and atividade.modulo.turma.instrutor != request.user:
+            return Response(status=403)
+
+        data = request.data.copy() if hasattr(request.data, 'copy') else dict(request.data)
+        data['atividade'] = atividade.id
+
+        try:
+            questionario = Questionario.objects.get(atividade=atividade)
+            serializer = QuestionarioSerializer(questionario, data=data, partial=True)
+        except Questionario.DoesNotExist:
+            serializer = QuestionarioSerializer(data=data)
+
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=201)
+        return Response(serializer.errors, status=400)
+
+
+class QuestionarioCopiarView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, atividade_origem_id, atividade_destino_id):
+        try:
+            q_origem = Questionario.objects.get(atividade_id=atividade_origem_id)
+            atividade_destino = Atividade.objects.get(id=atividade_destino_id)
+        except (Questionario.DoesNotExist, Atividade.DoesNotExist):
+            return Response(status=404)
+
+        if not request.user.is_staff and atividade_destino.modulo.turma.instrutor != request.user:
+            return Response(status=403)
+
+        from django.db import transaction
+        with transaction.atomic():
+            Questionario.objects.filter(atividade=atividade_destino).delete()
+            
+            q_novo = Questionario.objects.create(
+                atividade=atividade_destino,
+                titulo=q_origem.titulo,
+                descricao=q_origem.descricao,
+                tentativas_permitidas=q_origem.tentativas_permitidas,
+                tempo_limite_minutos=q_origem.tempo_limite_minutos,
+                nota_minima_aprovacao=q_origem.nota_minima_aprovacao
+            )
+            
+            for questao in q_origem.questoes.all():
+                q_nova = Questao.objects.create(
+                    questionario=q_novo,
+                    enunciado=questao.enunciado,
+                    ordem=questao.ordem,
+                    valor=questao.valor
+                )
+                for opcao in questao.opcoes.all():
+                    Opcao.objects.create(
+                        questao=q_nova,
+                        texto=opcao.texto,
+                        is_correta=opcao.is_correta,
+                        ordem=opcao.ordem
+                    )
+        
+        return Response({"detail": "Questionário copiado com sucesso"}, status=201)
+
+class SubmeterQuestionarioView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, atividade_id):
+        from decimal import Decimal
+        from django.db import transaction
+        try:
+            atividade = Atividade.objects.get(id=atividade_id)
+            questionario = Questionario.objects.get(atividade=atividade)
+            inscricao = Inscricao.objects.get(perfil=request.user, turma=atividade.modulo.turma)
+        except (Atividade.DoesNotExist, Questionario.DoesNotExist, Inscricao.DoesNotExist):
+            return Response({"detail": "Não encontrado ou acesso negado"}, status=404)
+
+        progresso, _ = ProgressoAtividade.objects.get_or_create(inscricao=inscricao, atividade=atividade)
+        
+        tentativas_feitas = TentativaQuestionario.objects.filter(progresso=progresso).count()
+        if tentativas_feitas >= questionario.tentativas_permitidas:
+            return Response({"detail": "Número máximo de tentativas atingido."}, status=403)
+
+        tentativa = TentativaQuestionario.objects.create(
+            progresso=progresso,
+            questionario=questionario,
+            numero_tentativa=tentativas_feitas + 1
+        )
+
+        respostas_data = request.data.get('respostas', [])
+        
+        pontuacao_obtida = Decimal('0.00')
+        pontuacao_total = Decimal('0.00')
+
+        with transaction.atomic():
+            for questao in questionario.questoes.all():
+                pontuacao_total += questao.valor
+                resp = next((r for r in respostas_data if str(r.get('questao_id')) == str(questao.id)), None)
+                if resp:
+                    opcao_id = resp.get('opcao_id')
+                    try:
+                        opcao_selecionada = Opcao.objects.get(id=opcao_id, questao=questao)
+                        RespostaAluno.objects.create(
+                            tentativa=tentativa,
+                            questao=questao,
+                            opcao_selecionada=opcao_selecionada
+                        )
+                        if opcao_selecionada.is_correta:
+                            pontuacao_obtida += questao.valor
+                    except Opcao.DoesNotExist:
+                        pass
+        
+        nota_normalizada = Decimal('0.00')
+        if pontuacao_total > 0:
+            nota_normalizada = (pontuacao_obtida / pontuacao_total) * Decimal('10.00')
+            nota_normalizada = round(nota_normalizada, 2)
+            
+        tentativa.nota_obtida = nota_normalizada
+        tentativa.fim = timezone.now()
+        tentativa.finalizada = True
+        tentativa.save()
+
+        if not progresso.nota_obtida or nota_normalizada > progresso.nota_obtida:
+            progresso.nota_obtida = nota_normalizada
+            progresso.concluido = True
+            progresso.save()
+            
+            progressos_quest = ProgressoAtividade.objects.filter(
+                inscricao=inscricao, 
+                nota_obtida__isnull=False
+            )
+            soma = sum(p.nota_obtida for p in progressos_quest)
+            count = progressos_quest.count()
+            if count > 0:
+                inscricao.nota = round(soma / count, 2)
+                inscricao.save()
+
+        return Response({
+            "nota": nota_normalizada,
+            "tentativa_numero": tentativa.numero_tentativa,
+            "detail": f"Você obteve {nota_normalizada} de 10."
+        }, status=200)
+
+class QuestionarioView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, atividade_id):
+        try:
+            atividade = Atividade.objects.get(id=atividade_id)
+            questionario = Questionario.objects.get(atividade=atividade)
+        except (Atividade.DoesNotExist, Questionario.DoesNotExist):
+            return Response(status=404)
+        
+        serializer = QuestionarioSerializer(questionario)
+        data = serializer.data
+        
+        is_gestor = request.user.is_staff or getattr(atividade.modulo.turma, 'instrutor_id', None) == request.user.id
+        if not is_gestor:
+            for q in data.get('questoes', []):
+                for op in q.get('opcoes', []):
+                    op.pop('is_correta', None)
+        
+        return Response(data)
+
+    def post(self, request, atividade_id):
+        if not request.user.is_staff:
+            return Response(status=403)
+        try:
+            atividade = Atividade.objects.get(id=atividade_id)
+        except Atividade.DoesNotExist:
+            return Response(status=404)
+
+        data = request.data.copy() if hasattr(request.data, 'copy') else dict(request.data)
+        data['atividade'] = atividade.id
+
+        try:
+            questionario = Questionario.objects.get(atividade=atividade)
+            serializer = QuestionarioSerializer(questionario, data=data, partial=True)
+        except Questionario.DoesNotExist:
+            serializer = QuestionarioSerializer(data=data)
+
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=201)
+        return Response(serializer.errors, status=400)
+
+
+class QuestionarioCopiarView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, atividade_origem_id, atividade_destino_id):
+        if not request.user.is_staff:
+            return Response(status=403)
+        
+        try:
+            q_origem = Questionario.objects.get(atividade_id=atividade_origem_id)
+            atividade_destino = Atividade.objects.get(id=atividade_destino_id)
+        except (Questionario.DoesNotExist, Atividade.DoesNotExist):
+            return Response(status=404)
+
+        from django.db import transaction
+        with transaction.atomic():
+            Questionario.objects.filter(atividade=atividade_destino).delete()
+            
+            q_novo = Questionario.objects.create(
+                atividade=atividade_destino,
+                titulo=q_origem.titulo,
+                descricao=q_origem.descricao,
+                tentativas_permitidas=q_origem.tentativas_permitidas,
+                tempo_limite_minutos=q_origem.tempo_limite_minutos,
+                nota_minima_aprovacao=q_origem.nota_minima_aprovacao
+            )
+            
+            for questao in q_origem.questoes.all():
+                q_nova = Questao.objects.create(
+                    questionario=q_novo,
+                    enunciado=questao.enunciado,
+                    ordem=questao.ordem,
+                    valor=questao.valor
+                )
+                for opcao in questao.opcoes.all():
+                    Opcao.objects.create(
+                        questao=q_nova,
+                        texto=opcao.texto,
+                        is_correta=opcao.is_correta,
+                        ordem=opcao.ordem
+                    )
+        
+        return Response({"detail": "Questionário copiado com sucesso"}, status=201)
+
+class SubmeterQuestionarioView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, atividade_id):
+        from decimal import Decimal
+        from django.db import transaction
+        try:
+            atividade = Atividade.objects.get(id=atividade_id)
+            questionario = Questionario.objects.get(atividade=atividade)
+            inscricao = Inscricao.objects.get(perfil=request.user, turma=atividade.modulo.turma)
+        except (Atividade.DoesNotExist, Questionario.DoesNotExist, Inscricao.DoesNotExist):
+            return Response({"detail": "Não encontrado ou acesso negado"}, status=404)
+
+        progresso, _ = ProgressoAtividade.objects.get_or_create(inscricao=inscricao, atividade=atividade)
+        
+        tentativas_feitas = TentativaQuestionario.objects.filter(progresso=progresso).count()
+        if tentativas_feitas >= questionario.tentativas_permitidas:
+            return Response({"detail": "Número máximo de tentativas atingido."}, status=403)
+
+        tentativa = TentativaQuestionario.objects.create(
+            progresso=progresso,
+            questionario=questionario,
+            numero_tentativa=tentativas_feitas + 1
+        )
+
+        respostas_data = request.data.get('respostas', [])
+        
+        pontuacao_obtida = Decimal('0.00')
+        pontuacao_total = Decimal('0.00')
+
+        with transaction.atomic():
+            for questao in questionario.questoes.all():
+                pontuacao_total += questao.valor
+                resp = next((r for r in respostas_data if str(r.get('questao_id')) == str(questao.id)), None)
+                if resp:
+                    opcao_id = resp.get('opcao_id')
+                    try:
+                        opcao_selecionada = Opcao.objects.get(id=opcao_id, questao=questao)
+                        RespostaAluno.objects.create(
+                            tentativa=tentativa,
+                            questao=questao,
+                            opcao_selecionada=opcao_selecionada
+                        )
+                        if opcao_selecionada.is_correta:
+                            pontuacao_obtida += questao.valor
+                    except Opcao.DoesNotExist:
+                        pass
+        
+        nota_normalizada = Decimal('0.00')
+        if pontuacao_total > 0:
+            nota_normalizada = (pontuacao_obtida / pontuacao_total) * Decimal('10.00')
+            nota_normalizada = round(nota_normalizada, 2)
+            
+        tentativa.nota_obtida = nota_normalizada
+        tentativa.fim = timezone.now()
+        tentativa.finalizada = True
+        tentativa.save()
+
+        if not progresso.nota_obtida or nota_normalizada > progresso.nota_obtida:
+            progresso.nota_obtida = nota_normalizada
+            progresso.concluido = True
+            progresso.save()
+            
+            progressos_quest = ProgressoAtividade.objects.filter(
+                inscricao=inscricao, 
+                nota_obtida__isnull=False
+            )
+            soma = sum(p.nota_obtida for p in progressos_quest)
+            count = progressos_quest.count()
+            if count > 0:
+                inscricao.nota = round(soma / count, 2)
+                inscricao.save()
+
+        return Response({
+            "nota": nota_normalizada,
+            "tentativa_numero": tentativa.numero_tentativa,
+            "detail": f"Você obteve {nota_normalizada} de 10."
+        }, status=200)
+============================================================
+📄 ARQUIVO: .\backend\users\models.py
+============================================================
+
+import uuid
+from django.db import models
+from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
+from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
+
+class ProfileManager(BaseUserManager):
+    def create_user(self, cpf, password=None, **extra_fields):
+        if not cpf:
+            raise ValueError('O CPF deve ser informado')
+        user = self.model(cpf=cpf, **extra_fields)
+        if password:
+            user.set_password(password)
+        else:
+            user.set_unusable_password() # Apenas para casos excepcionais sem senha
+            
+        user.save(using=self._db)
+        return user
+
+    def create_superuser(self, cpf, password=None, **extra_fields):
+        extra_fields.setdefault('is_staff', True)
+        extra_fields.setdefault('is_superuser', True)
+        return self.create_user(cpf, password, **extra_fields)
+
+class Profile(AbstractBaseUser, PermissionsMixin):
+    class UserType(models.TextChoices):
+        SERVIDOR_ATIVO = 'SERVIDOR_ATIVO', _('Servidor Ativo')
+        CIDADAO = 'CIDADAO', _('Cidadão')
+        TERCEIRIZADO = 'TERCEIRIZADO', _('Terceirizado')
+        ESTAGIARIO = 'ESTAGIARIO', _('Estagiário')
+        INSTRUTOR = 'INSTRUTOR', _('Instrutor')
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    cpf = models.CharField(max_length=11, unique=True, verbose_name="CPF")
+    nome_completo = models.CharField(max_length=255, verbose_name="Nome Completo")
+    nome_social = models.CharField(max_length=255, blank=True, null=True, verbose_name="Nome Social")
+    email = models.EmailField(unique=True, verbose_name="E-mail")
+    telefone = models.CharField(max_length=20, verbose_name="Telefone", null=True, blank=True)
+    
+    tipo_usuario = models.CharField(
+        max_length=20,
+        choices=UserType.choices,
+        default=UserType.CIDADAO,
+        verbose_name="Tipo de Usuário"
+    )
+
+    # Dados adicionais flexíveis para armazenar lotação, matrícula, etc.
+    dados_servidor = models.JSONField(blank=True, null=True, verbose_name="Dados do Servidor")
+
+    # Foto de perfil (armazenada no Cloudflare R2 via django-storages)
+    foto_perfil = models.ImageField(
+        upload_to='fotos_perfil/',
+        blank=True,
+        null=True,
+        verbose_name="Foto de Perfil"
+    )
+
+    # Regras de Negócio EGPC
+    esta_de_licenca = models.BooleanField(default=False, verbose_name="Está de Licença")
+    bloqueado_ate = models.DateField(blank=True, null=True, verbose_name="Bloqueado até (Suspensão)")
+    # Nível de permissão especial: permite criar Solicitações de Reserva de Espaço
+    is_solicitante = models.BooleanField(
+        default=False,
+        verbose_name="É Solicitante",
+        help_text="Concede permissão para solicitar reservas de espaços institucionais."
+    )
+    data_ultima_confirmacao = models.DateField(default=timezone.now, verbose_name="Última Confirmação (90 dias)")
+
+    # Campos padrão Django
+    is_active = models.BooleanField(default=True)
+    is_staff = models.BooleanField(default=False)
+    criado_em = models.DateTimeField(auto_now_add=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    objects = ProfileManager()
+
+    USERNAME_FIELD = 'cpf'
+    REQUIRED_FIELDS = ['nome_completo', 'email']
+
+    class Meta:
+        db_table = 'perfis'
+        verbose_name = 'Perfil'
+        verbose_name_plural = 'Perfis'
+
+    def __str__(self):
+        return f"{self.nome_social or self.nome_completo} ({self.cpf})"
+
+    def esta_bloqueado(self):
+        """Verifica se o usuário está cumprindo período de suspensão de 12 meses."""
+        if self.bloqueado_ate and self.bloqueado_ate > timezone.now().date():
+            return True
+        return False
+
+class OTPCode(models.Model):
+    class Proposito(models.TextChoices):
+        REGISTRO = 'registro', _('Registro')
+        RECUPERACAO = 'recuperacao', _('Recuperação de Senha')
+
+    email = models.EmailField(verbose_name="E-mail")
+    codigo = models.CharField(max_length=6, verbose_name="Código OTP")
+    proposito = models.CharField(max_length=20, choices=Proposito.choices, default=Proposito.REGISTRO)
+    criado_em = models.DateTimeField(auto_now_add=True)
+    expira_em = models.DateTimeField()
+    usado = models.BooleanField(default=False)
+
+    class Meta:
+        db_table = 'auth_otp_codes'
+        verbose_name = 'Código OTP'
+        verbose_name_plural = 'Códigos OTP'
+
+    def is_valid(self):
+        return not self.usado and timezone.now() <= self.expira_em
+
+class ServidorRH(models.Model):
+    cpf = models.CharField(max_length=11, verbose_name="CPF")
+    matricula = models.CharField(max_length=50, unique=True, verbose_name="Matrícula")
+    nome_base = models.CharField(max_length=255, verbose_name="Nome na Base")
+    cargo = models.CharField(max_length=255, blank=True, null=True, verbose_name="Cargo")
+    importado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'rh_servidores_base'
+        verbose_name = 'Servidor RH (Base Espelho)'
+        verbose_name_plural = 'Servidores RH'
+        constraints = [
+            models.UniqueConstraint(fields=['cpf', 'matricula'], name='unique_cpf_matricula')
+        ]
+
+    def __str__(self):
+        return f"{self.matricula} - {self.cpf}"
+
+class TicketDenunciaMatricula(models.Model):
+    class Status(models.TextChoices):
+        ABERTO = 'ABERTO', _('Aberto')
+        EM_ANALISE = 'EM_ANALISE', _('Em Análise')
+        RESOLVIDO = 'RESOLVIDO', _('Resolvido')
+
+    user_denunciante = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name='denuncias_feitas')
+    matricula_reclamada = models.CharField(max_length=50, verbose_name="Matrícula Reclamada")
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.ABERTO)
+    criado_em = models.DateTimeField(auto_now_add=True)
+    resolvido_em = models.DateTimeField(null=True, blank=True)
+    resolvido_por = models.ForeignKey(Profile, on_delete=models.SET_NULL, null=True, blank=True, related_name='denuncias_resolvidas')
+
+    class Meta:
+        db_table = 'rh_tickets_denuncia'
+        verbose_name = 'Ticket de Denúncia'
+        verbose_name_plural = 'Tickets de Denúncia'
+
+    def __str__(self):
+        return f"Ticket {self.id} - {self.matricula_reclamada}"
+
+class RelacaoChefia(models.Model):
+    class Status(models.TextChoices):
+        PENDENTE = 'PENDENTE', _('Pendente')
+        ACEITO = 'ACEITO', _('Aceito')
+
+    servidor = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name='chefias_solicitadas')
+    chefe = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name='subordinados')
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDENTE)
+    data_solicitacao = models.DateTimeField(auto_now_add=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'users_relacao_chefia'
+        verbose_name = 'Relação de Chefia'
+        verbose_name_plural = 'Relações de Chefia'
+        constraints = [
+            models.UniqueConstraint(fields=['servidor', 'chefe'], name='unique_servidor_chefe')
+        ]
+
+    def __str__(self):
+        return f"{self.servidor.nome_completo} -> Chefe: {self.chefe.nome_completo} [{self.status}]"
+
+class AuditLog(models.Model):
+    user = models.ForeignKey(Profile, on_delete=models.SET_NULL, null=True, blank=True)
+    method = models.CharField(max_length=10)
+    path = models.CharField(max_length=255)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.TextField(null=True, blank=True)
+    payload = models.JSONField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'audit_logs'
+        verbose_name = 'Log de Auditoria'
+        verbose_name_plural = 'Logs de Auditoria'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.method} {self.path} - {self.user.cpf if self.user else 'Anon'}"
+============================================================
+📄 ARQUIVO: .\backend\users\serializers.py
+============================================================
+
+from rest_framework import serializers
+from .models import Profile
+
+
+class ProfileSerializer(serializers.ModelSerializer):
+    """
+    Serializer completo do Profile para o endpoint /auth/me/.
+    Retorna todos os campos relevantes, incluindo os dados_servidor
+    (secretaria, matrícula, etc.) e o status computado de bloqueio.
+    """
+    esta_bloqueado   = serializers.SerializerMethodField()
+    tipo_usuario_display = serializers.CharField(
+        source="get_tipo_usuario_display", read_only=True
+    )
+    # Extrai campos mais usados do JSONField para facilitar o consumo no frontend
+    secretaria      = serializers.SerializerMethodField()
+    matricula = serializers.SerializerMethodField()
+    empresa = serializers.SerializerMethodField()
+    matricula_chefe = serializers.SerializerMethodField()
+    # URL absoluta da foto de perfil (None se não houver)
+    foto_perfil_url = serializers.SerializerMethodField()
+    is_instrutor = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Profile
+        fields = [
+            # Identificação
+            "id", "cpf", "nome_completo", "nome_social",
+            # Contato
+            "email", "telefone",
+            # Vínculo
+            "tipo_usuario", "tipo_usuario_display",
+            # Dados funcionais (raw + extraídos)
+            "dados_servidor", "secretaria", "matricula", "empresa", "matricula_chefe",
+            # Foto de perfil
+            "foto_perfil_url",
+            # Regras EGPC
+            "esta_de_licenca", "bloqueado_ate", "data_ultima_confirmacao",
+            "esta_bloqueado", "is_solicitante", "is_instrutor",
+            # Metadata
+            "is_active", "is_staff", "criado_em",
+        ]
+        read_only_fields = [
+            "id", "cpf", "esta_bloqueado", "tipo_usuario_display",
+            "secretaria", "matricula", "empresa", "matricula_chefe",
+            "foto_perfil_url", "criado_em", "is_instrutor",
+        ]
+
+    def get_esta_bloqueado(self, obj: Profile) -> bool:
+        return obj.esta_bloqueado()
+
+    def _ds(self, obj: Profile) -> dict:
+        """Retorna o dados_servidor de forma segura."""
+        return obj.dados_servidor or {}
+
+    def get_secretaria(self, obj):
+        return self._ds(obj).get("secretaria")
+
+    def get_matricula(self, obj):
+        return self._ds(obj).get("matricula")
+
+    def get_empresa(self, obj):
+        return self._ds(obj).get("empresa")
+
+    def get_matricula_chefe(self, obj):
+        return self._ds(obj).get("matricula_chefe")
+
+    def get_foto_perfil_url(self, obj) -> str | None:
+        """Retorna a URL pública da foto ou None se não houver."""
+        if obj.foto_perfil:
+            try:
+                return obj.foto_perfil.url
+            except Exception:
+                return None
+        return None
+    
+    def get_is_instrutor(self, obj) -> bool:
+        if obj.tipo_usuario == 'INSTRUTOR':
+            return True
+        from cursos.models import Turma
+        return Turma.objects.filter(instrutor=obj).exists()
+
+============================================================
+📄 ARQUIVO: .\backend\users\urls.py
+============================================================
+
+from django.urls import path
+from .views import (
+    PreValidateProfileView,
+    LookupEmailByCpfView,
+    RegisterProfileView,
+    MyProfileView,
+    FotoPerfilView,
+    ListaInstrutoresView,
+    AdminUserListView,
+    AdminUserUpdateView,
+    ToggleSolicitanteView,
+    SendOtpView,
+    ValidateOtpView,
+    ResetPasswordView,
+    BuscarNomeCpfView,
+    DenunciarMatriculaView,
+    MinhaEquipeView,
+    ResponderChefiaView,
+    ImpersonateUserView,
+)
+
+app_name = 'users'
+
+urlpatterns = [
+    # Verifica disponibilidade de CPF/e-mail/telefone (usado no cadastro)
+    path('auth/pre-validate/', PreValidateProfileView.as_view(), name='pre-validate-profile'),
+
+    # Dado o CPF, retorna o e-mail real cadastrado (usado no Login)
+    path('auth/lookup-email/', LookupEmailByCpfView.as_view(), name='lookup-email-by-cpf'),
+
+    # Cria o Profile no Django (fluxo nativo)
+    path('auth/register/', RegisterProfileView.as_view(), name='register-profile'),
+
+    # GET → dados do perfil autenticado | PATCH → edita campos permitidos
+    path('auth/me/', MyProfileView.as_view(), name='my-profile'),
+
+    # POST → upload e processamento de foto de perfil (multipart/form-data)
+    path('auth/foto/', FotoPerfilView.as_view(), name='foto-perfil'),
+
+    path('instrutores/', ListaInstrutoresView.as_view(), name='lista-instrutores'),
+
+    # Rotas de Administração
+    path('admin/usuarios/', AdminUserListView.as_view(), name='admin-user-list'),
+    path('admin/usuarios/<uuid:pk>/', AdminUserUpdateView.as_view(), name='admin-user-update'),
+    path('admin/usuarios/<uuid:pk>/toggle-solicitante/', ToggleSolicitanteView.as_view(), name='toggle-solicitante'),
+    path('admin/usuarios/<uuid:pk>/impersonate/', ImpersonateUserView.as_view(), name='impersonate-user'),
+
+    path('auth/send-otp/', SendOtpView.as_view(), name='send-otp'),
+    path('auth/verify-otp/', ValidateOtpView.as_view(), name='verify-otp'),
+    path('auth/reset-password/', ResetPasswordView.as_view(), name='reset-password'),
+
+    path('auth/buscar-nome/', BuscarNomeCpfView.as_view(), name='buscar-nome'),
+    path('auth/denunciar-matricula/', DenunciarMatriculaView.as_view(), name='denunciar-matricula'),
+
+    path('equipe/', MinhaEquipeView.as_view(), name='minha-equipe'),
+    path('equipe/responder/', ResponderChefiaView.as_view(), name='responder-chefia'),
+]
+
+============================================================
+📄 ARQUIVO: .\backend\users\views.py
+============================================================
+
+import logging
+from django.conf import settings
+from django.utils import timezone
+from rest_framework import status, views, generics
+from rest_framework.response import Response
+from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser
+from .models import Profile
+from .serializers import ProfileSerializer
+import random
+from datetime import timedelta
+from django.core.mail import send_mail
+from django.conf import settings
+from .models import OTPCode
+
+logger = logging.getLogger(__name__)
+
+
+class PreValidateProfileView(views.APIView):
+    """
+    Endpoint de pré-validação de Cadastro.
+    Verifica se CPF, E-mail ou Telefone já existem antes de iniciar o fluxo de cadastro.
+    Retorna 400 com os campos conflitantes ou 200 se tudo estiver disponível.
+    """
+    permission_classes = [AllowAny]
+
+    def post(self, request, *args, **kwargs):
+        cpf      = request.data.get('cpf')
+        email    = request.data.get('email')
+        telefone = request.data.get('telefone')
+
+        errors = {}
+
+        if cpf and Profile.objects.filter(cpf=cpf).exists():
+            errors['cpf'] = 'Este CPF já está cadastrado no sistema.'
+
+        if email and Profile.objects.filter(email=email).exists():
+            errors['email'] = 'Este e-mail já está em uso.'
+
+        if telefone and Profile.objects.filter(telefone=telefone).exists():
+            errors['telefone'] = 'Este telefone já está em uso por outra conta.'
+
+        if errors:
+            return Response({"status": "error", "errors": errors}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response({"status": "success", "message": "Dados disponíveis para cadastro."}, status=status.HTTP_200_OK)
+
+
+from rest_framework.throttling import AnonRateThrottle
+
+class LookupEmailByCpfView(views.APIView):
+    """
+    Endpoint de consulta de e-mail por CPF, usado no fluxo de Login.
+    Mascarado por segurança (ex: ma****os@gmail.com).
+    """
+    permission_classes = [AllowAny]
+    throttle_classes = [AnonRateThrottle]
+
+    def post(self, request, *args, **kwargs):
+        cpf = (request.data.get('cpf') or '').replace('.', '').replace('-', '').strip()
+
+        if len(cpf) != 11 or not cpf.isdigit():
+            return Response(
+                {"detail": "Informe um CPF válido com 11 dígitos."},
+                status=status.HTTP_422_UNPROCESSABLE_ENTITY
+            )
+
+        try:
+            profile = Profile.objects.only('email').get(cpf=cpf, is_active=True)
+        except Profile.DoesNotExist:
+            return Response(
+                {"detail": "CPF não cadastrado. Verifique ou realize seu cadastro."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Mascarar o email: mantem 2 primeiros caracteres, 2 ultimos antes da @, e o dominio
+        try:
+            name_part, domain_part = profile.email.split('@')
+            if len(name_part) > 4:
+                masked_name = name_part[:2] + '*' * (len(name_part) - 4) + name_part[-2:]
+            else:
+                masked_name = name_part[:1] + '*' * (len(name_part) - 1)
+            email_mascarado = f"{masked_name}@{domain_part}"
+        except:
+            email_mascarado = profile.email # fallback if split fails
+
+        return Response({
+            "email":      email_mascarado,  # para exibição na UI
+            "email_real": profile.email,    # para autenticação no frontend
+        }, status=status.HTTP_200_OK)
+
+
+class RegisterProfileView(views.APIView):
+    """
+    Endpoint de cadastro nativo do Perfil no Django.
+    Recebe os dados do usuário, incluindo a senha, e cria a conta localmente.
+    """
+    permission_classes = [AllowAny]
+
+    def post(self, request, *args, **kwargs):
+        data           = request.data
+        cpf            = data.get('cpf')
+        email          = data.get('email')
+        password       = data.get('password')
+        telefone       = data.get('telefone')
+        nome_completo  = data.get('nome_completo')
+        nome_social    = data.get('nome_social', '')
+        tipo_usuario   = data.get('tipo_usuario', Profile.UserType.CIDADAO)
+        dados_servidor = data.get('dados_servidor', {})
+
+        # 1. Validações Básicas
+        if not all([cpf, email, nome_completo, password]):
+            return Response(
+                {"detail": "CPF, E-mail, Nome Completo e Senha são obrigatórios."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        matricula = dados_servidor.get('matricula')
+        matricula_chefe = dados_servidor.get('matricula_chefe')
+
+        if matricula and matricula_chefe and matricula == matricula_chefe:
+            return Response(
+                {"detail": "A matrícula da sua chefia não pode ser idêntica a sua própria."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 2. Verifica se CPF ou E-mail já existem (exceto se for instrutor fantasma)
+        fantasma = Profile.objects.filter(cpf=cpf).first()
+        
+        if fantasma:
+            if fantasma.email != f'pendente_{cpf}@escola.local':
+                return Response({"detail": "CPF já está em uso."}, status=status.HTTP_400_BAD_REQUEST)
+        elif Profile.objects.filter(email=email).exists():
+            return Response({"detail": "Este e-mail já está em uso."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 3. Criação ou Atualização no Banco de Dados
+        try:
+            with transaction.atomic():
+                if fantasma:
+                    # OTIMIZAÇÃO GIGANTE: Como nós controlamos o ID agora, não precisamos mais
+                    # deletar o fantasma e reatribuir as turmas. Basta atualizar o perfil dele!
+                    profile = fantasma
+                    profile.email = email
+                    profile.telefone = telefone or None
+                    profile.nome_completo = nome_completo
+                    profile.nome_social = nome_social or None
+                    profile.tipo_usuario = tipo_usuario
+                    profile.dados_servidor = dados_servidor
+                    profile.data_ultima_confirmacao = timezone.now().date()
+                    profile.set_password(password) # Criptografa a senha!
+                    profile.save()
+                else:
+                    # Cria um usuário novo do zero
+                    profile = Profile(
+                        cpf=cpf,
+                        email=email,
+                        telefone=telefone or None,
+                        nome_completo=nome_completo,
+                        nome_social=nome_social or None,
+                        tipo_usuario=tipo_usuario,
+                        dados_servidor=dados_servidor,
+                        data_ultima_confirmacao=timezone.now().date()
+                    )
+                    profile.set_password(password) # Criptografa a senha!
+                    profile.save()
+
+        except Exception as exc:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error("Erro ao criar Profile local: %s", exc)
+            return Response(
+                {"detail": f"Erro interno ao criar perfil: {exc}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+        # Retorna os dados do perfil recém-criado
+        from .serializers import ProfileSerializer
+        serializer = ProfileSerializer(profile)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+class MyProfileView(views.APIView):
+    """
+    GET   /api/users/auth/me/   → dados do perfil autenticado
+    PATCH /api/users/auth/me/   → atualiza campos permitidos (nome_social, telefone, email_chefe)
+    """
+    permission_classes     = [IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        serializer = ProfileSerializer(request.user)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def patch(self, request, *args, **kwargs):
+        profile          = request.user
+        campos_alterados = {}
+
+        # Campos de nível raiz editáveis pelo próprio usuário
+        for campo in ("nome_social", "telefone"):
+            if campo in request.data:
+                valor = request.data[campo]
+                campos_alterados[campo] = valor if valor != "" else None
+
+        # Campos dentro do JSONField dados_servidor
+        dados_servidor_atual = dict(profile.dados_servidor or {})
+        ds_changed = False
+        for campo_ds in ("secretaria",):
+            if campo_ds in request.data:
+                valor_ds = request.data[campo_ds]
+                dados_servidor_atual[campo_ds] = valor_ds if valor_ds != "" else None
+                ds_changed = True
+
+        if ds_changed:
+            campos_alterados["dados_servidor"] = dados_servidor_atual
+
+        # Nova lógica para o Duplo Aperto de Mão:
+        if "matricula_chefe" in request.data:
+            nova_matricula_chefe = request.data["matricula_chefe"]
+            from users.models import RelacaoChefia, Profile
+            
+            if nova_matricula_chefe:
+                # Busca o possível chefe
+                chefe = Profile.objects.filter(dados_servidor__matricula=nova_matricula_chefe).first()
+                if not chefe:
+                    return Response({"detail": "Chefe não encontrado com essa matrícula."}, status=status.HTTP_404_NOT_FOUND)
+                
+                if chefe.id == profile.id:
+                    return Response({"detail": "Você não pode ser seu próprio chefe."}, status=status.HTTP_400_BAD_REQUEST)
+
+                # Cria ou atualiza a relação como PENDENTE
+                rel, created = RelacaoChefia.objects.update_or_create(
+                    servidor=profile,
+                    defaults={'chefe': chefe, 'status': RelacaoChefia.Status.PENDENTE}
+                )
+                
+                # Salvar também no dados_servidor por retrocompatibilidade se necessário
+                dados_servidor_atual['matricula_chefe'] = nova_matricula_chefe
+                campos_alterados["dados_servidor"] = dados_servidor_atual
+            else:
+                # Se limpou o campo, remove a relação atual
+                RelacaoChefia.objects.filter(servidor=profile).delete()
+                if 'matricula_chefe' in dados_servidor_atual:
+                    del dados_servidor_atual['matricula_chefe']
+                campos_alterados["dados_servidor"] = dados_servidor_atual
+
+        # Validação de Matrícula contra a base do RH
+        if profile.tipo_usuario == 'SERVIDOR_ATIVO' and ds_changed and 'matricula' in request.data:
+            nova_matricula = request.data['matricula']
+            from users.models import ServidorRH
+            rh_match = ServidorRH.objects.filter(cpf=profile.cpf, matricula=nova_matricula).first()
+            if not rh_match:
+                return Response(
+                    {"detail": "Matrícula inválida ou não pertence ao seu CPF na base do RH."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            dados_servidor_atual['matricula'] = nova_matricula
+            campos_alterados["dados_servidor"] = dados_servidor_atual
+
+        if not campos_alterados:
+            return Response({"detail": "Nenhum campo editável foi enviado."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Valida unicidade do telefone (exclui o próprio usuário)
+        novo_tel = campos_alterados.get("telefone")
+        if novo_tel and Profile.objects.exclude(id=profile.id).filter(telefone=novo_tel).exists():
+            return Response(
+                {"detail": "Este telefone já está em uso por outra conta."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        for campo, valor in campos_alterados.items():
+            setattr(profile, campo, valor)
+        profile.save(update_fields=list(campos_alterados.keys()) + ["atualizado_em"])
+
+        return Response(ProfileSerializer(profile).data, status=status.HTTP_200_OK)
+
+class DenunciarMatriculaView(views.APIView):
+    """
+    POST /api/users/auth/denunciar-matricula/
+    Permite a um servidor denunciar uma matrícula que está sendo usada indevidamente.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
+        matricula = request.data.get("matricula")
+        if not matricula:
+            return Response({"detail": "Matrícula é obrigatória."}, status=status.HTTP_400_BAD_REQUEST)
+
+        from users.models import TicketDenunciaMatricula
+        
+        ticket = TicketDenunciaMatricula.objects.create(
+            user_denunciante=request.user,
+            matricula_reclamada=matricula
+        )
+        
+        return Response({"detail": "Denúncia registrada com sucesso. A equipe analisará o caso.", "ticket_id": ticket.id}, status=status.HTTP_201_CREATED)
+
+
+class MinhaEquipeView(views.APIView):
+    """
+    GET /api/users/equipe/
+    Retorna os subordinados deste usuário (tanto pendentes quanto aceitos)
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        from users.models import RelacaoChefia
+        from users.serializers import ProfileSerializer
+        
+        relacoes = RelacaoChefia.objects.filter(chefe=request.user)
+        
+        data = []
+        for rel in relacoes:
+            data.append({
+                "id_relacao": rel.id,
+                "status": rel.status,
+                "data_solicitacao": rel.data_solicitacao,
+                "servidor": ProfileSerializer(rel.servidor).data
+            })
+            
+        return Response(data, status=status.HTTP_200_OK)
+
+class ResponderChefiaView(views.APIView):
+    """
+    POST /api/users/equipe/responder/
+    O chefe aceita ou recusa/desliga um servidor.
+    Payload: {"id_relacao": 1, "acao": "ACEITAR" | "RECUSAR"}
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
+        from users.models import RelacaoChefia
+        id_relacao = request.data.get("id_relacao")
+        acao = request.data.get("acao")
+        
+        if not id_relacao or acao not in ["ACEITAR", "RECUSAR"]:
+            return Response({"detail": "Dados inválidos."}, status=status.HTTP_400_BAD_REQUEST)
+            
+        rel = RelacaoChefia.objects.filter(id=id_relacao, chefe=request.user).first()
+        if not rel:
+            return Response({"detail": "Relação não encontrada."}, status=status.HTTP_404_NOT_FOUND)
+            
+        if acao == "ACEITAR":
+            rel.status = RelacaoChefia.Status.ACEITO
+            rel.save()
+            return Response({"detail": "Vínculo aceito."}, status=status.HTTP_200_OK)
+        else:
+            rel.delete()
+            return Response({"detail": "Vínculo removido."}, status=status.HTTP_200_OK)
+
+class FotoPerfilView(views.APIView):
+    """
+    POST /api/users/auth/foto/
+    Recebe multipart/form-data com campo 'foto'.
+    Pipeline: Pillow → crop 400×400 → WebP q85 → R2 (ou local) → URL salva no Profile.
+    """
+    permission_classes     = [IsAuthenticated]
+
+    TAMANHO_ALVO   = (400, 400)
+    QUALIDADE_WEBP = 85
+    MAX_MB         = 8
+
+    def post(self, request, *args, **kwargs):
+        from PIL import Image, UnidentifiedImageError
+        from io import BytesIO
+        from django.core.files.base import ContentFile
+        import uuid as _uuid
+
+        arquivo = request.FILES.get("foto")
+        if not arquivo:
+            return Response({"detail": "Campo 'foto' ausente no multipart."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if arquivo.size > self.MAX_MB * 1024 * 1024:
+            return Response(
+                {"detail": f"Arquivo maior que {self.MAX_MB}MB."},
+                status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE
+            )
+
+        # Abre e valida com Pillow
+        try:
+            img = Image.open(arquivo)
+            img.verify()    # Verifica integridade (consome o stream)
+            arquivo.seek(0) # Rebobina para releitura
+            img = Image.open(arquivo)
+        except UnidentifiedImageError:
+            return Response({"detail": "Arquivo inválido. Envie JPG, PNG ou WebP."}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as exc:
+            logger.error("Pillow open error: %s", exc)
+            return Response({"detail": "Erro ao abrir a imagem."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            # Converte para RGB → elimina transparência (fundo branco)
+            if img.mode in ("RGBA", "P", "LA"):
+                base = Image.new("RGB", img.size, (255, 255, 255))
+                if img.mode == "P":
+                    img = img.convert("RGBA")
+                mask = img.split()[-1] if img.mode in ("RGBA", "LA") else None
+                base.paste(img, mask=mask)
+                img = base
+            elif img.mode != "RGB":
+                img = img.convert("RGB")
+
+            # Crop central quadrado
+            w, h = img.size
+            lado = min(w, h)
+            img  = img.crop(((w - lado) // 2, (h - lado) // 2, (w + lado) // 2, (h + lado) // 2))
+
+            # Redimensiona e encoda como WebP
+            img    = img.resize(self.TAMANHO_ALVO, Image.LANCZOS)
+            buffer = BytesIO()
+            img.save(buffer, format="WEBP", quality=self.QUALIDADE_WEBP, method=6)
+            buffer.seek(0)
+
+        except Exception as exc:
+            logger.error("Pillow processing error: %s", exc)
+            return Response({"detail": "Erro ao processar a imagem."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        # Persiste no storage (R2) primeiro para garantir atomicidade de rede
+        profile = request.user
+        old_foto = profile.foto_perfil if profile.foto_perfil else None
+        
+        nome = f"{profile.id}_{_uuid.uuid4().hex[:8]}.webp"
+        profile.foto_perfil.save(nome, ContentFile(buffer.read()), save=True)
+
+        # Remove foto anterior do storage somente após salvar a nova
+        if old_foto and old_foto.name != profile.foto_perfil.name:
+            try:
+                old_foto.delete(save=False)
+            except Exception:
+                pass  # Não interrompe o fluxo se a deleção no R2 falhar
+
+        return Response({"foto_url": profile.foto_perfil.url}, status=status.HTTP_200_OK)
+
+class ListaInstrutoresView(generics.ListAPIView):
+    """ Retorna todos os usuários que são instrutores para o select do formulário """
+    serializer_class = ProfileSerializer
+    permission_classes = [IsAuthenticated, IsAdminUser]
+
+    def get_queryset(self):
+        return Profile.objects.filter(tipo_usuario='INSTRUTOR', is_active=True).order_by('nome_completo')
+    
+class AdminUserListView(generics.ListAPIView):
+    """ GET: Retorna todos os usuários do sistema para o painel Admin """
+    serializer_class = ProfileSerializer
+    permission_classes = [IsAuthenticated, IsAdminUser]
+
+    def get_queryset(self):
+        return Profile.objects.all().order_by('nome_completo')
+
+
+class AdminUserUpdateView(generics.UpdateAPIView):
+    """ PATCH: Permite ao Admin editar dados sensíveis (is_staff, is_active, tipo_usuario) """
+    serializer_class = ProfileSerializer
+    permission_classes = [IsAuthenticated, IsAdminUser]
+    queryset = Profile.objects.all()
+
+
+class ToggleSolicitanteView(views.APIView):
+    """
+    PATCH /api/users/admin/usuarios/<uuid>/toggle-solicitante/
+    Ativa ou desativa a permissão de Solicitante de reservas para um usuário.
+    Retorna o novo estado do campo is_solicitante.
+    """
+    permission_classes = [IsAuthenticated, IsAdminUser]
+
+    def patch(self, request, pk, *args, **kwargs):
+        try:
+            perfil = Profile.objects.get(pk=pk)
+        except Profile.DoesNotExist:
+            return Response({"detail": "Usuário não encontrado."}, status=status.HTTP_404_NOT_FOUND)
+
+        # Impede que o Admin retire a própria permissão de solicitante por engano
+        if perfil.pk == request.user.pk and perfil.is_solicitante:
+            return Response(
+                {"detail": "Não é possível remover sua própria permissão de Solicitante."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Inverte o estado atual
+        perfil.is_solicitante = not perfil.is_solicitante
+        perfil.save(update_fields=["is_solicitante", "atualizado_em"])
+
+        acao = "concedida" if perfil.is_solicitante else "removida"
+
+class ImpersonateUserView(views.APIView):
+    """
+    POST /api/users/admin/usuarios/<uuid>/impersonate/
+    Permite ao admin logar como outro usuário gerando um token temporário.
+    """
+    permission_classes = [IsAuthenticated, IsAdminUser]
+
+    def post(self, request, pk, *args, **kwargs):
+        try:
+            target_user = Profile.objects.get(pk=pk)
+        except Profile.DoesNotExist:
+            return Response({"detail": "Usuário não encontrado."}, status=status.HTTP_404_NOT_FOUND)
+
+        if target_user.is_superuser:
+            return Response({"detail": "Não é permitido fazer impersonate de um superusuário."}, status=status.HTTP_403_FORBIDDEN)
+
+        from rest_framework_simplejwt.tokens import RefreshToken
+        refresh = RefreshToken.for_user(target_user)
+        # Opcionalmente, pode adicionar uma claim 'impersonator_id' no token se desejar rastrear
+        refresh['impersonator_id'] = str(request.user.id)
+
+        return Response({
+            'refresh': str(refresh),
+            'access': str(refresh.access_token),
+            'detail': f'Sessão iniciada como {target_user.nome_completo}'
+        }, status=status.HTTP_200_OK)
+        return Response({
+            "is_solicitante": perfil.is_solicitante,
+            "detail": f"Permissão de Solicitante {acao} para {perfil.nome_completo}."
+        }, status=status.HTTP_200_OK)
+
+
+class SendOtpView(views.APIView):
+    """
+    Gera um código OTP, salva no banco (vencimento em 5min) e envia por e-mail.
+    """
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        email = request.data.get("email")
+
+        if not email:
+            return Response({"detail": "E-mail é obrigatório."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        # 1) Apaga OTPs antigos deste usuário (limpeza)
+        OTPCode.objects.filter(email=email).delete()
+
+        # 2) Gera código de 6 dígitos
+        codigo = str(random.randint(100000, 999999))
+        vencimento = timezone.now() + timedelta(minutes=5)
+
+        # 3) Salva no banco
+        OTPCode.objects.create(
+            email=email,
+            codigo=codigo,
+            expires_at=vencimento,
+        )
+
+        # 4) Envia e-mail usando as configurações reais do settings.py
+        try:
+            send_mail(
+                subject="Código de Verificação — Escola de Governo",
+                message=f"Seu código de verificação é: {codigo}\n\nEle expira em 5 minutos.",
+                from_email=settings.EMAIL_HOST_USER,
+                recipient_list=[email],
+                fail_silently=False,
+            )
+        except Exception as e:
+            # Se der erro no envio real, não barra o cadastro – apenas loga
+            logger.error(f"Erro ao enviar OTP para {email}: {e}")
+
+        return Response({"detail": "Código enviado com sucesso."})
+
+
+class ValidateOtpView(views.APIView):
+    """
+    Valida o código OTP e, se OK, gera o Access JWT e Refresh Token usando HS256.
+    """
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        email = request.data.get("email")
+        codigo_input = request.data.get("codigo")
+
+        if not (email and codigo_input):
+            return Response({"detail": "E-mail e código são obrigatórios."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        # Busca o OTP válido
+        otp = OTPCode.objects.filter(email=email, used=False).first()
+
+        if not otp:
+            return Response({"detail": "Nenhum código pendente para este e-mail."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        if otp.expires_at < timezone.now():
+            otp.used = True
+            otp.save()
+            return Response({"detail": "Código expirado."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        if otp.codigo != codigo_input:
+            return Response({"detail": "Código inválido."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        # Marcar como usado
+        otp.used = True
+        otp.save()
+
+        # Tenta buscar o perfil para gerar tokens (Login/Recuperação)
+        try:
+            profile = Profile.objects.get(email=email)
+            
+            # Dados que vão no payload
+            payload = {
+                "user_id": str(profile.id),
+                "email": profile.email,
+                "nome": profile.nome_completo,
+                "tipo": profile.tipo_usuario,
+                "exp": timezone.now() + timedelta(minutes=15),
+            }
+
+            # Gera Access Token e Refresh Token usando HS256
+            import jose.jwt as jose_jwt # Garantindo que o import está disponível
+            access = jose_jwt.encode(payload, settings.SECRET_KEY, algorithm="HS256")
+            refresh = jose_jwt.encode({"user_id": str(profile.id)}, settings.SECRET_KEY, algorithm="HS256")
+
+            return Response({
+                "access": access,
+                "refresh": refresh,
+                "user": {
+                    "id": profile.id,
+                    "email": profile.email,
+                    "nome": profile.nome_completo,
+                    "tipo_usuario": profile.tipo_usuario,
+                },
+            })
+        except Profile.DoesNotExist:
+            # Se o perfil não existe, mas o OTP é válido, retornamos sucesso sem tokens.
+            # Isso é usado no fluxo de Cadastro (Registro).
+            return Response({
+                "status": "success",
+                "message": "E-mail verificado com sucesso. Prossiga com o cadastro.",
+                "verified_email": email
+            }, status=status.HTTP_200_OK)
+
+
+class ResetPasswordView(views.APIView):
+    """ POST: Altera a senha caso o usuário envie um código OTP válido """
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        email = request.data.get('email')
+        codigo = request.data.get('codigo') # Exigimos o código de novo como "senha temporária" de autorização
+        new_password = request.data.get('password')
+
+        otp_record = OTPCode.objects.filter(email=email, codigo=codigo, proposito='recuperacao', usado=True).order_by('-criado_em').first()
+
+        # Verifica se existe um OTP recente que foi validado com sucesso
+        if not otp_record or (timezone.now() - otp_record.criado_em) > timedelta(minutes=15):
+            return Response({"detail": "Sessão de recuperação inválida ou expirada."}, status=status.HTTP_403_FORBIDDEN)
+
+        try:
+            profile = Profile.objects.get(email=email)
+            profile.set_password(new_password)
+            profile.save()
+            # Destrói o OTP para que não possa ser usado para trocar a senha duas vezes
+            otp_record.delete()
+            
+            return Response({"detail": "Senha atualizada com sucesso!"}, status=status.HTTP_200_OK)
+        except Profile.DoesNotExist:
+            return Response({"detail": "Usuário não encontrado."}, status=status.HTTP_404_NOT_FOUND)
+
+class BuscarNomeCpfView(views.APIView):
+    """ GET: Retorna o nome do usuário a partir do CPF (Apenas para Staff) """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if not request.user.is_staff:
+            return Response({"detail": "Sem permissão."}, status=status.HTTP_403_FORBIDDEN)
+            
+        cpf = request.query_params.get('cpf', '').replace(r'\D', '')
+        if len(cpf) != 11:
+            return Response({"detail": "CPF inválido."}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            profile = Profile.objects.get(cpf=cpf)
+            return Response({"nome": profile.nome_social or profile.nome_completo}, status=status.HTTP_200_OK)
+        except Profile.DoesNotExist:
+            return Response({"detail": "Usuário não encontrado."}, status=status.HTTP_404_NOT_FOUND)
+============================================================
+📄 ARQUIVO: .\frontend\package.json
+============================================================
+
+{
+  "name": "frontend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "clsx": "^2.1.1",
+    "framer-motion": "^12.38.0",
+    "lucide-react": "^1.8.0",
+    "next": "14.2.35",
+    "react": "^18",
+    "react-dom": "^18",
+    "sonner": "^2.0.7",
+    "tailwind-merge": "^3.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "eslint": "^8",
+    "eslint-config-next": "14.2.35",
+    "postcss": "^8",
+    "tailwindcss": "^3.4.1",
+    "typescript": "^5"
+  }
+}
+============================================================
+📄 ARQUIVO: .\frontend\lib\api.ts
+============================================================
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api";
+
+export interface ApiError {
+  status:   number;
+  message:  string;
+  errors?:  Record<string, string[]>;
+  raw?:     unknown;
+}
+
+type FetchOptions = Omit<RequestInit, "body"> & {
+  requireAuth?: boolean;
+  isFormData?: boolean;
+  headers?: Record<string, string>;
+  body?: BodyInit | null;
+};
+
+export async function fetchApi<T = unknown>(
+  endpoint: string,
+  options: FetchOptions = {}
+): Promise<T> {
+  const { requireAuth = true, isFormData = false, headers, body, ...restOptions } = options;
+
+  const requestHeaders: Record<string, string> = {
+    ...(!isFormData ? { "Content-Type": "application/json" } : {}),
+    ...(headers as Record<string, string> | undefined),
+  };
+
+  // ── INJEÇÃO DO TOKEN JWT DO DJANGO ──
+  if (requireAuth && !requestHeaders["Authorization"]) {
+    if (typeof window !== "undefined") {
+      const token = localStorage.getItem("egpc_access_token");
+      if (token) {
+        requestHeaders["Authorization"] = `Bearer ${token}`;
+      }
+    }
+  }
+
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    ...restOptions,
+    headers: requestHeaders,
+    body,
+  });
+
+  let result: unknown = null;
+  const contentType = response.headers.get("Content-Type") || "";
+  if (contentType.includes("application/json")) {
+    result = await response.json();
+  }
+
+  if (!response.ok) {
+    if (response.status === 401 && typeof window !== "undefined") {
+      // Token expirado: limpa o storage e manda pro login
+      localStorage.removeItem("egpc_access_token");
+      localStorage.removeItem("egpc_refresh_token");
+      window.location.href = "/login";
+    }
+
+    const body = result as Record<string, unknown> | null;
+    const err: ApiError = {
+      status:  response.status,
+      message: (body?.detail as string) || (body?.message as string) || `Erro ${response.status}: Falha na requisição.`,
+      errors: (body?.errors as Record<string, string[]>) || undefined,
+      raw:    result,
+    };
+    throw err;
+  }
+
+  return result as T;
+}

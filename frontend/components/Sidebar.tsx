@@ -9,7 +9,7 @@ import {
   FolderKanban, Menu, X, UserCircle, ChevronsUpDown, CalendarDays, ClipboardList,
   ShieldCheck
 } from "lucide-react";
-import { supabase } from "@/lib/supabase";
+
 import { useProfile } from "@/contexts/ProfileContext";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -63,8 +63,9 @@ export default function Sidebar() {
 
   const { profile, isLoading } = useProfile();
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
+  const handleLogout = () => {
+    localStorage.removeItem("egpc_access_token");
+    localStorage.removeItem("egpc_refresh_token");
     toast.success("Sessão encerrada.");
     router.push("/login");
   };

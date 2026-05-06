@@ -47,6 +47,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'core.middleware.AuditMiddleware',
 ]
 
 ROOT_URLCONF = 'core.urls'
@@ -114,20 +115,24 @@ CORS_ALLOWED_ORIGINS = [
 # Configurações do DRF
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        'users.authentication.SupabaseJWTAuthentication',
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
     ],
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
     ]
 }
 
-# ─── Supabase Auth ─────────────────────────────────────────────────────────────
-# SUPABASE_JWT_SECRET → usado apenas se o algoritmo for HS256
-SUPABASE_JWT_SECRET    = env('SUPABASE_JWT_SECRET', default='substitua-pela-sua-chave-no-env')
-# SUPABASE_JWT_ALGORITHM → 'ES256' (padrão novo) ou 'HS256' (projetos legados)
-SUPABASE_JWT_ALGORITHM = env('SUPABASE_JWT_ALGORITHM', default='ES256')
-# SUPABASE_URL → necessário para buscar as chaves públicas JWKS quando alg=ES256
-SUPABASE_URL           = env('SUPABASE_URL', default='')
+# ─── SimpleJWT ─────────────────────────────────────────────────────────────────
+from datetime import timedelta
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(days=1),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
+    'ROTATE_REFRESH_TOKENS': True,
+    'BLACKLIST_AFTER_ROTATION': True,
+    'AUTH_HEADER_TYPES': ('Bearer',),
+    'USER_ID_FIELD': 'id',
+    'USER_ID_CLAIM': 'user_id',
+}
 
 # ─── Cloudflare R2 (S3-compatible Storage) ─────────────────────────────────────
 #
@@ -184,3 +189,12 @@ STORAGES = {
         "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
     },
 }
+
+# ─── E-mail (Google SMTP) ─────────────────────────────────────────────────────
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = env('EMAIL_HOST_USER', default='')
+EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD', default='')
+DEFAULT_FROM_EMAIL = f"Portal EGPC <{EMAIL_HOST_USER}>"

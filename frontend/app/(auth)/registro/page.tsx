@@ -5,15 +5,16 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   User, Mail, Phone, Calendar, Briefcase,
   Lock, CheckCircle2, ArrowLeft, Loader2,
-  AlertTriangle, ShieldCheck, UserRound, KeyRound, RefreshCcw
+  AlertTriangle, ShieldCheck, UserRound, KeyRound, RefreshCcw, Building2
 } from "lucide-react";
 import { fetchApi, type ApiError } from "@/lib/api";
-import { supabase } from "@/lib/supabase";
 import { validarCPF, mascaraCPF, mascaraTelefone, calcularIdade } from "@/lib/validations";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+
+interface Secretaria { id: number; sigla: string; nome: string; }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Tipos
@@ -117,6 +118,7 @@ export default function RegistroPage() {
   const [cpfRespError, setCpfRespError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isInitializing, setIsInitializing] = useState(true);
+  const [secretarias, setSecretarias] = useState<Secretaria[]>([]);
 
   // ── ESTADOS DE SEGURANÇA (OTP) ──
   const [otpAttempts, setOtpAttempts] = useState(0);
@@ -136,17 +138,24 @@ export default function RegistroPage() {
   const set = (field: keyof FormState, value: string) =>
     setForm((prev) => ({ ...prev, [field]: value }));
 
-  // ── LIMPEZA TOTAL (Resolve Problema de Sessão Presa/F5) ──
-  const handleResetRegistration = async () => {
+  // ── LIMPEZA TOTAL ──
+  const handleResetRegistration = () => {
     localStorage.removeItem("egpc_otp_cooldown");
     localStorage.removeItem("egpc_partial_reg");
-    await supabase.auth.signOut();
+    localStorage.removeItem("egpc_access_token");
+    localStorage.removeItem("egpc_refresh_token");
     setForm(INITIAL_FORM);
     setStep(1);
     setCountdown(0);
     setLastSentEmail("");
     toast.success("Progresso limpo. Você pode iniciar um novo cadastro.");
   };
+
+  useEffect(() => {
+    fetchApi<Secretaria[]>("/users/secretarias/", { requireAuth: false })
+      .then(data => setSecretarias(Array.isArray(data) ? data : []))
+      .catch(() => {});
+  }, []);
 
   // ── PERSISTÊNCIA DO FORMULÁRIO NO F5 ──
   useEffect(() => {
@@ -155,7 +164,7 @@ export default function RegistroPage() {
     }
   }, [form, step, isInitializing]);
 
-  // ── INICIALIZAÇÃO E VALIDAÇÃO REAL DA SESSÃO ──
+  // ── INICIALIZAÇÃO ──
   useEffect(() => {
     const initialize = async () => {
       const savedReg = localStorage.getItem("egpc_partial_reg");
@@ -165,17 +174,6 @@ export default function RegistroPage() {
           setForm(savedForm);
           setStep(savedStep);
         } catch(e) {}
-      }
-
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        const { data: { user }, error } = await supabase.auth.getUser();
-        if (error || !user) {
-          await handleResetRegistration();
-        } else if (step < 3) {
-          set("email", user.email || "");
-          setStep(3);
-        }
       }
 
       const storedCooldown = localStorage.getItem("egpc_otp_cooldown");
@@ -202,18 +200,6 @@ export default function RegistroPage() {
       return () => clearTimeout(timer);
     }
   }, [countdown]);
-
-  // ── RECUPERAÇÃO DE SESSÃO (CROSS-TAB) ──
-  useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === "SIGNED_IN" && step === 2) {
-        toast.success("E-mail verificado automaticamente pelo link!");
-        setStep(3); 
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, [step]);
 
   // ── VALIDAÇÕES ──
   const verificarCPFNoBanco = useCallback(async (cpf: string) => {
@@ -267,13 +253,9 @@ export default function RegistroPage() {
         });
       }
 
-      const redirectUrl = typeof window !== 'undefined' ? `${window.location.origin}/registro` : undefined;
-      const { error } = await supabase.auth.signInWithOtp({ 
-        email: form.email,
-        options: { emailRedirectTo: redirectUrl }
+      await fetchApi("/users/auth/send-otp/", {
+        method: "POST", requireAuth: false, body: JSON.stringify({ email: form.email, proposito: 'registro' })
       });
-      
-      if (error) throw error;
 
       toast.success(isResend ? "Novo código enviado!" : "Código enviado! Verifique seu e-mail.");
       setStep(2);
@@ -304,28 +286,25 @@ export default function RegistroPage() {
 
   const handleVerifyOTP = async () => {
     if (form.otp.length !== 6) return;
-    
     if (otpAttempts >= 3) {
       toast.error("Muitas tentativas falhas. Por segurança, solicite um novo código.");
       return;
     }
 
     setIsLoading(true);
-    const { error } = await supabase.auth.verifyOtp({ email: form.email, token: form.otp, type: "email" });
-    setIsLoading(false);
-
-    if (error) {
-      const newAttempts = otpAttempts + 1;
-      setOtpAttempts(newAttempts);
-      
-      if (newAttempts >= 3) {
-        toast.error("Você errou o código 3 vezes. Aguarde e solicite um novo envio.");
-      } else {
-        toast.error(`Código inválido. Você tem mais ${3 - newAttempts} tentativa(s).`);
-      }
-    } else {
+    try {
+      await fetchApi("/users/auth/verify-otp/", {
+        method: "POST", requireAuth: false, body: JSON.stringify({ email: form.email, codigo: form.otp, proposito: 'registro' })
+      });
       toast.success("E-mail verificado com sucesso!");
       setStep(3);
+    } catch (err) {
+      const newAttempts = otpAttempts + 1;
+      setOtpAttempts(newAttempts);
+      if (newAttempts >= 3) toast.error("Você errou o código 3 vezes. Aguarde e solicite um novo envio.");
+      else toast.error(`Código inválido. Você tem mais ${3 - newAttempts} tentativa(s).`);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -370,40 +349,50 @@ export default function RegistroPage() {
     if (form.password.length < 6) return toast.error("A senha deve ter pelo menos 6 caracteres.");
     
     setIsLoading(true);
-    const { error: pwdError } = await supabase.auth.updateUser({ password: form.password });
-    
-    if (pwdError) {
-      toast.error("Erro ao salvar senha no provedor de segurança.");
-      setIsLoading(false); return;
-    }
 
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
-      toast.error("Sessão de segurança perdida. Faça login novamente.");
-      setIsLoading(false); return;
-    }
-
-    const dados_servidor: any = { secretaria: form.secretaria || null, cpf_chefe: form.cpf_chefe ? form.cpf_chefe.replace(/\D/g, "") : null, dt_nascimento: form.data_nascimento };
+    const dados_servidor: any = { 
+        secretaria: form.secretaria || null, 
+        cpf_chefe: form.cpf_chefe ? form.cpf_chefe.replace(/\D/g, "") : null, 
+        dt_nascimento: form.data_nascimento 
+    };
     if (form.tipo_usuario === "SERVIDOR_ATIVO") dados_servidor.matricula = form.matricula;
     else if (form.tipo_usuario !== "CIDADAO") dados_servidor.empresa = form.empresa;
 
     const corpoRegistro = {
-      cpf: cpfLimpo, nome_completo: form.nome_completo, email: form.email,
-      telefone: form.telefone.replace(/\D/g, ""), tipo_usuario: form.tipo_usuario, dados_servidor,
+      cpf: cpfLimpo, 
+      nome_completo: form.nome_completo, 
+      email: form.email,
+      password: form.password,
+      telefone: form.telefone.replace(/\D/g, ""), 
+      tipo_usuario: form.tipo_usuario, 
+      dados_servidor,
     };
 
     try {
       await fetchApi("/users/auth/register/", {
-        method: "POST", requireAuth: false, headers: { Authorization: `Bearer ${session.access_token}` }, body: JSON.stringify(corpoRegistro),
+        method: "POST", requireAuth: false, body: JSON.stringify(corpoRegistro),
       });
+
+      // Auto-login após registro
+      try {
+        const loginData = await fetchApi<{ access: string; refresh: string }>("/auth/login/", {
+          method: "POST",
+          requireAuth: false,
+          body: JSON.stringify({ cpf: cpfLimpo, password: form.password }),
+        });
+        localStorage.setItem("egpc_access_token", loginData.access);
+        localStorage.setItem("egpc_refresh_token", loginData.refresh);
+      } catch (e) {
+        console.error("Auto-login failed:", e);
+      }
+
       toast.success("Cadastro realizado com sucesso! Bem-vindo(a) ao EGPC.");
-      // Limpa os caches locais pois o cadastro finalizou com sucesso
       localStorage.removeItem("egpc_partial_reg");
       localStorage.removeItem("egpc_otp_cooldown");
       router.push("/dashboard");
     } catch (err: any) {
-      await supabase.auth.signOut();
-      toast.error(`Perfil não criado: ${err.message}`);
+      toast.error(`Erro ao realizar cadastro: ${err.message}`);
+    } finally {
       setIsLoading(false);
     }
   };
@@ -638,9 +627,19 @@ export default function RegistroPage() {
                   <p className="text-[13px] text-slate-500 mt-1">Informações sobre seu órgão ou empresa.</p>
                 </div>
                 {form.tipo_usuario === "SERVIDOR_ATIVO" && (
-                  <FieldGroup label="Matrícula funcional *">
-                    <IconInput autoFocus placeholder="N° da sua matrícula" value={form.matricula} onChange={(e: any) => set("matricula", e.target.value)} />
-                  </FieldGroup>
+                  <>
+                    <FieldGroup label="Matrícula funcional *">
+                      <IconInput autoFocus placeholder="N° da sua matrícula" value={form.matricula} onChange={(e: any) => set("matricula", e.target.value)} />
+                    </FieldGroup>
+                    <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} className="flex items-start gap-2 p-3 rounded-xl bg-red-50 border border-red-200">
+                      <AlertTriangle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                      <p className="text-[11px] text-red-700 leading-relaxed">
+                        <strong>Aviso Legal:</strong> Utilizar a matrícula funcional de outra pessoa para obter
+                        benefícios no sistema constitui <strong>crime de falsidade ideológica</strong> (Art. 299 do Código Penal),
+                        sujeitando o infrator a pena de reclusão de 1 a 5 anos.
+                      </p>
+                    </motion.div>
+                  </>
                 )}
                 {(form.tipo_usuario === "TERCEIRIZADO" || form.tipo_usuario === "ESTAGIARIO") && (
                   <FieldGroup label={form.tipo_usuario === "TERCEIRIZADO" ? "Empresa contratada" : "Empresa / Órgão do estágio"}>
@@ -648,7 +647,19 @@ export default function RegistroPage() {
                   </FieldGroup>
                 )}
                 <FieldGroup label="Secretaria / Setor">
-                  <IconInput placeholder="Ex: Sec. de Educação, Saúde..." value={form.secretaria} onChange={(e: any) => set("secretaria", e.target.value)} />
+                  <div className="relative">
+                    <Building2 className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none" />
+                    <select
+                      value={form.secretaria}
+                      onChange={(e: any) => set("secretaria", e.target.value)}
+                      className="input-light pl-11 w-full"
+                    >
+                      <option value="">Selecione a secretaria...</option>
+                      {secretarias.map(s => (
+                        <option key={s.id} value={`${s.sigla} - ${s.nome}`}>{s.sigla} — {s.nome}</option>
+                      ))}
+                    </select>
+                  </div>
                 </FieldGroup>
                 <FieldGroup label="CPF da Chefia Imediata">
                   <IconInput icon={User} type="text" inputMode="numeric" placeholder="000.000.000-00" value={form.cpf_chefe} onChange={(e: any) => set("cpf_chefe", mascaraCPF(e.target.value))} />

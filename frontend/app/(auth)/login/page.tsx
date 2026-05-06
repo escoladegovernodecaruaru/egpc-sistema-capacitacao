@@ -4,7 +4,6 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { User, Lock, ArrowRight, Loader2, ShieldCheck, Eye, EyeOff, KeyRound, Mail, CheckCircle2 } from "lucide-react";
 import { fetchApi, type ApiError } from "@/lib/api";
-import { supabase } from "@/lib/supabase";
 import { mascaraCPF } from "@/lib/validations";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -52,28 +51,24 @@ export default function LoginPage() {
           requireAuth: false,
           body:        JSON.stringify({ cpf: cpfLimpo }),
         });
-        // email_real é usado para autenticação; email é a versão mascarada para exibição
+      // email_real é usado para autenticação; email é a versão mascarada para exibição
         resolvedEmail = data.email_real;
         setEmailReal(resolvedEmail);
       }
 
-      // Faz login no Supabase
-      const { error } = await supabase.auth.signInWithPassword({
-        email:    resolvedEmail,
-        password: password,
+      // ── AUTENTICAÇÃO REAL NO DJANGO ──
+      const loginData = await fetchApi<{ access: string; refresh: string }>("/auth/login/", {
+        method: "POST",
+        requireAuth: false,
+        body: JSON.stringify({ cpf: cpfLimpo, password }),
       });
 
-      if (error) {
-        if (error.message.toLowerCase().includes("invalid")) {
-          toast.error("Credenciais incorretas.", { description: "Verifique seu CPF e senha." });
-        } else {
-          toast.error(`Erro no login: ${error.message}`);
-        }
-        return;
-      }
+      localStorage.setItem("egpc_access_token", loginData.access);
+      localStorage.setItem("egpc_refresh_token", loginData.refresh);
 
       toast.success("Bem-vindo(a) ao Portal EGPC!");
       router.push("/dashboard");
+
 
     } catch (err: unknown) {
       const apiErr = err as ApiError;
@@ -100,26 +95,21 @@ export default function LoginPage() {
       let resolvedEmail = emailReal;
       if (!resolvedEmail) {
         const data = await fetchApi<{ email: string; email_real: string }>("/users/auth/lookup-email/", { method: "POST", requireAuth: false, body: JSON.stringify({ cpf: cpfLimpo }) });
-        // Guarda o e-mail real para uso no Supabase; o mascarado é apenas para feedback na UI
         resolvedEmail = data.email_real;
         setEmailReal(resolvedEmail);
       }
 
-      const { error } = await supabase.auth.resetPasswordForEmail(resolvedEmail, {
-        redirectTo: `${window.location.origin}/login`,
+      // CHAMA NOSSO BACKEND NOVO
+      await fetchApi("/users/auth/send-otp/", {
+        method: "POST", requireAuth: false, body: JSON.stringify({ email: resolvedEmail, proposito: 'recuperacao' })
       });
       
-      if (error) {
-        toast.error(`Erro ao solicitar código: ${error.message}`);
-      } else {
-        // Mostra o e-mail mascarado ao usuário só para feedback
-        const [nome, dominio] = resolvedEmail.split("@");
-        const emailMascarado = `${nome.substring(0, 2)}${"*".repeat(Math.max(nome.length - 2, 3))}@${dominio}`;
-        toast.success("Código enviado!", { description: `Verifique o e-mail ${emailMascarado}` });
-        setStep(3);
-      }
+      const [nome, dominio] = resolvedEmail.split("@");
+      const emailMascarado = `${nome.substring(0, 2)}${"*".repeat(Math.max(nome.length - 2, 3))}@${dominio}`;
+      toast.success("Código enviado!", { description: `Verifique o e-mail ${emailMascarado}` });
+      setStep(3);
     } catch (err) {
-      toast.error("Erro ao verificar CPF.");
+      toast.error("Erro ao solicitar código. Verifique se o CPF possui conta.");
     } finally {
       setIsResetting(false);
     }
@@ -130,16 +120,18 @@ export default function LoginPage() {
     if (recoveryOtp.length !== 6) return;
     
     setIsLoading(true);
-    // Verifica se o código digitado bate com o enviado pro e-mail
-    const { error } = await supabase.auth.verifyOtp({ email: emailReal, token: recoveryOtp, type: 'recovery' });
-    setIsLoading(false);
-
-    if (error) {
+    try {
+      // CHAMA NOSSO BACKEND NOVO
+      await fetchApi("/users/auth/verify-otp/", {
+        method: "POST", requireAuth: false, body: JSON.stringify({ email: emailReal, codigo: recoveryOtp, proposito: 'recuperacao' })
+      });
+      toast.success("Identidade confirmada!", { description: "Crie sua nova senha agora." });
+      setStep(4);
+    } catch (err) {
       setOtpAttempts(a => a + 1);
       toast.error(otpAttempts >= 2 ? "Código expirado ou inválido. Volte e solicite outro." : "Código incorreto. Tente novamente.");
-    } else {
-      toast.success("Identidade confirmada!", { description: "Crie sua nova senha agora." });
-      setStep(4); // Vai para a tela de nova senha
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -149,19 +141,21 @@ export default function LoginPage() {
     if (newPassword !== newPasswordConfirm) return toast.error("As senhas não coincidem.");
 
     setIsLoading(true);
-    // Como o verifyOtp (acima) criou uma sessão temporária, agora podemos atualizar a senha
-    const { error } = await supabase.auth.updateUser({ password: newPassword });
-    setIsLoading(false);
-
-    if (error) {
-      toast.error(`Erro ao atualizar senha: ${error.message}`);
-    } else {
+    try {
+      // CHAMA NOSSO BACKEND NOVO
+      await fetchApi("/users/auth/reset-password/", {
+        method: "POST", requireAuth: false, body: JSON.stringify({ email: emailReal, codigo: recoveryOtp, password: newPassword })
+      });
       toast.success("Senha atualizada com sucesso!", { description: "Você já pode acessar o portal." });
-      setPassword(newPassword); // Preenche a senha no form para facilitar o login imediato
-      setStep(1); // Volta para a tela de login
+      setPassword(newPassword);
+      setStep(1);
       setRecoveryOtp("");
       setNewPassword("");
       setNewPasswordConfirm("");
+    } catch (err: any) {
+      toast.error(`Erro ao atualizar senha: ${err.message}`);
+    } finally {
+      setIsLoading(false);
     }
   };
 

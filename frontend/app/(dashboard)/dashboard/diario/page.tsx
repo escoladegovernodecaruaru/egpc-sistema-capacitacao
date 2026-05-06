@@ -4,13 +4,15 @@ import { useEffect, useState } from "react";
 import {
   BookOpen, CalendarDays, CheckCircle2, ChevronLeft, Save, Loader2,
   ClipboardList, AlertCircle, XCircle, FileText, FolderOpen,
-  Play, Plus, Trash2, Video, ToggleLeft, ToggleRight, Clock, Award, ShieldCheck
+  Play, Plus, Trash2, Video, Lock
 } from "lucide-react";
 import { fetchApi } from "@/lib/api";
 import { useProfile } from "@/contexts/ProfileContext";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
+import FormQuestionario from "../gestao/FormQuestionario";
+import { PenSquare } from "lucide-react";
 
 /* ─── Types ─────────────────────────────────────────────────── */
 interface AlunoDiario {
@@ -25,6 +27,7 @@ interface AlunoDiario {
 interface TurmaInstrutor {
   id: number;
   codigo_turma: string;
+  letra?: string;
   status: string;
   curso: { titulo: string; tipo: string };
   eventos?: { id: number; data: string }[];
@@ -69,20 +72,24 @@ export default function DiarioPage() {
   const [novaAtiv, setNovaAtiv] = useState<{
     modulo_id: number | null;
     titulo: string;
-    tipo: 'VIDEO_YOUTUBE' | 'LEITURA' | 'TAREFA';
+    tipo: 'VIDEO_YOUTUBE' | 'LEITURA' | 'TAREFA' | 'QUESTIONARIO';
     url_video: string;
     descricao: string;
-    carga_horaria_recompensa: number;
-    contarCH: boolean;
+    data_liberacao_data: string;
+    data_liberacao_hora: string;
+    atividade_pre_requisito_id: string | null;
   }>({
     modulo_id: null,
     titulo: '',
     tipo: 'VIDEO_YOUTUBE',
     url_video: '',
     descricao: '',
-    carga_horaria_recompensa: 0,
-    contarCH: false,
+    data_liberacao_data: '',
+    data_liberacao_hora: '00:00',
+    atividade_pre_requisito_id: null,
   });
+
+  const [questionarioEditandoId, setQuestionarioEditandoId] = useState<number | null>(null);
 
   /* ─── Load ─────────────────────────────────────────────── */
   useEffect(() => {
@@ -150,8 +157,8 @@ export default function DiarioPage() {
     if (!turmaId) return;
     setLoadingModulos(true);
     try {
-      // CORREÇÃO: Puxa os dados direto da rota da Sala de Aula, que já vem com a árvore completa!
-      const data = await fetchApi<any>(`/cursos/turmas/${turmaId}/sala-de-aula/`);
+      // Usa o novo endpoint que permite Instrutor ler a estrutura
+      const data = await fetchApi<any>(`/cursos/turmas/${turmaId}/modulos/`);
       setModulos(data.modulos || []);
     } catch {
       toast.error("Erro ao carregar módulos.");
@@ -244,6 +251,11 @@ export default function DiarioPage() {
     }
     setSavingModulo(true);
     try {
+      // Monta data_liberacao combinando data + hora
+      let data_liberacao: string | null = null;
+      if (novaAtiv.data_liberacao_data) {
+        data_liberacao = `${novaAtiv.data_liberacao_data}T${novaAtiv.data_liberacao_hora || '00:00'}:00`;
+      }
       await fetchApi(`/cursos/modulos/${novaAtiv.modulo_id}/atividades/`, {
         method: 'POST',
         body: JSON.stringify({
@@ -251,15 +263,14 @@ export default function DiarioPage() {
           tipo: novaAtiv.tipo,
           url_video: novaAtiv.url_video || null,
           descricao: novaAtiv.descricao || null,
-          carga_horaria_recompensa: novaAtiv.contarCH ? novaAtiv.carga_horaria_recompensa : 0,
+          data_liberacao,
+          atividade_pre_requisito: novaAtiv.atividade_pre_requisito_id || null,
           ordem: 0,
         })
       });
-      setNovaAtiv({ modulo_id: novaAtiv.modulo_id, titulo: '', tipo: 'VIDEO_YOUTUBE', url_video: '', descricao: '', carga_horaria_recompensa: 0, contarCH: false });
+      setNovaAtiv({ modulo_id: novaAtiv.modulo_id, titulo: '', tipo: 'VIDEO_YOUTUBE', url_video: '', descricao: '', data_liberacao_data: '', data_liberacao_hora: '00:00', atividade_pre_requisito_id: null });
       await carregarModulos();
-      toast.success(novaAtiv.contarCH
-        ? "Atividade criada! Aguardando aprovação do administrador para contar na CH."
-        : "Atividade criada!");
+      toast.success("Atividade criada!");
     } catch (err: any) {
       toast.error(err.message || "Erro ao criar atividade.");
     } finally {
@@ -312,6 +323,17 @@ export default function DiarioPage() {
           )}
         </div>
       </div>
+
+      {questionarioEditandoId && (
+        <FormQuestionario
+          atividadeId={questionarioEditandoId}
+          onClose={() => {
+            setQuestionarioEditandoId(null);
+            carregarModulos();
+          }}
+        />
+      )}
+
 
       <AnimatePresence mode="wait">
 
@@ -370,7 +392,7 @@ export default function DiarioPage() {
                 >
                   <div className="flex justify-between items-start mb-4">
                     <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 bg-slate-100 px-2.5 py-1 rounded-md">
-                      Turma {turma.codigo_turma}
+                      {turma.codigo_turma}
                     </span>
                     <span className={cn(
                       "px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border",
@@ -381,7 +403,10 @@ export default function DiarioPage() {
                       {turma.status}
                     </span>
                   </div>
-                  <h3 className="text-lg font-bold text-slate-800 leading-snug">{turma.curso?.titulo || "Curso sem título"}</h3>
+                  <h3 className="text-lg font-bold text-slate-800 leading-snug">
+                    {turma.curso?.titulo || "Curso sem título"}
+                    {turma.letra && <span className="ml-2 text-slate-400 font-normal text-sm">Turma {turma.letra}</span>}
+                  </h3>
                   <div className="mt-6 flex items-center justify-between text-sm text-slate-500 border-t border-slate-100 pt-4">
                     <span className="flex items-center gap-1.5 font-medium">
                       <CalendarDays className="w-4 h-4" />
@@ -542,11 +567,11 @@ export default function DiarioPage() {
             {diarioTab === 'conteudo' && (
               <div className="space-y-6">
 
-                {/* Aviso de CH */}
+                {/* Aviso */}
                 <div className="flex items-start gap-3 bg-indigo-50 border border-indigo-200 rounded-xl p-4">
-                  <ShieldCheck className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" />
+                  <Lock className="w-5 h-5 text-indigo-600 shrink-0 mt-0.5" />
                   <p className="text-[13px] text-indigo-800 leading-relaxed font-medium">
-                    Atividades que <strong>somam carga horária</strong> precisam ser aprovadas pelo Administrador antes de ficarem visíveis para os alunos.{!isTipoEAD && " Vídeos só contam como CH em turmas Híbridas ou EAD."}
+                    Novas atividades precisam ser <strong>aprovadas pelo Administrador</strong> antes de ficarem visíveis para os alunos.
                   </p>
                 </div>
 
@@ -593,31 +618,51 @@ export default function DiarioPage() {
                             {modulo.atividades.map((ativ: any) => (
                               <div key={ativ.id} className="flex items-center gap-4 px-5 py-3">
                                 <div className={cn(
-                                  "w-7 h-7 rounded-lg flex items-center justify-center shrink-0",
-                                  ativ.tipo === 'VIDEO_YOUTUBE' ? "bg-red-50 text-red-500" : "bg-slate-100 text-slate-500"
+                                  ativ.tipo === 'VIDEO_YOUTUBE' ? "bg-red-50 text-red-500" : 
+                                  ativ.tipo === 'QUESTIONARIO' ? "bg-purple-50 text-purple-600" :
+                                  "bg-slate-100 text-slate-500"
                                 )}>
-                                  {ativ.tipo === 'VIDEO_YOUTUBE' ? <Video className="w-3.5 h-3.5" /> : <BookOpen className="w-3.5 h-3.5" />}
+                                  {ativ.tipo === 'VIDEO_YOUTUBE' ? <Video className="w-3.5 h-3.5" /> : 
+                                   ativ.tipo === 'QUESTIONARIO' ? <FileText className="w-3.5 h-3.5" /> :
+                                   <BookOpen className="w-3.5 h-3.5" />}
                                 </div>
                                 <div className="flex-1">
                                   <p className="text-[13px] font-bold text-slate-700">{ativ.titulo}</p>
-                                  {ativ.carga_horaria_recompensa > 0 && (
+                                  <div className="flex flex-wrap gap-1.5 mt-0.5">
+                                    {ativ.data_liberacao && (
+                                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 inline-flex items-center gap-1">
+                                        📅 Libera em {new Date(ativ.data_liberacao).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}
+                                      </span>
+                                    )}
+                                    {ativ.atividade_pre_requisito_id && (
+                                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-50 text-amber-600 inline-flex items-center gap-1">
+                                        🔒 Tem pré-requisito
+                                      </span>
+                                    )}
                                     <span className={cn(
-                                      "text-[10px] font-bold px-1.5 py-0.5 rounded mt-0.5 inline-flex items-center gap-1",
-                                      ativ.aprovado_admin
-                                        ? "bg-emerald-50 text-emerald-600"
-                                        : "bg-amber-50 text-amber-600"
+                                      "text-[10px] font-bold px-1.5 py-0.5 rounded inline-flex items-center gap-1",
+                                      ativ.aprovado_admin ? "bg-emerald-50 text-emerald-600" : "bg-amber-50 text-amber-600"
                                     )}>
-                                      {ativ.aprovado_admin ? <Award className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
-                                      +{ativ.carga_horaria_recompensa}h CH — {ativ.aprovado_admin ? "Aprovado" : "Pendente Admin"}
+                                      {ativ.aprovado_admin ? "✅ Visível" : "⏳ Pendente aprovação"}
                                     </span>
-                                  )}
+                                  </div>
                                 </div>
-                                <button
-                                  onClick={() => excluirAtividade(ativ.id)}
-                                  className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
+                                <div className="flex items-center gap-1">
+                                  {ativ.tipo === 'QUESTIONARIO' && (
+                                      <button
+                                          onClick={() => setQuestionarioEditandoId(ativ.id)}
+                                          className="p-1.5 text-blue-500 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors flex items-center gap-1 text-[11px] font-bold px-3"
+                                      >
+                                          <PenSquare className="w-4 h-4" /> Editar Formulário
+                                      </button>
+                                  )}
+                                  <button
+                                    onClick={() => excluirAtividade(ativ.id)}
+                                    className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </div>
                               </div>
                             ))}
                           </div>
@@ -642,6 +687,7 @@ export default function DiarioPage() {
                                 <option value="VIDEO_YOUTUBE">📹 Vídeo YouTube</option>
                                 <option value="LEITURA">📖 Leitura / Link</option>
                                 <option value="TAREFA">📝 Tarefa</option>
+                                <option value="QUESTIONARIO">📊 Questionário</option>
                               </select>
                             </div>
                             {(novaAtiv.tipo === 'VIDEO_YOUTUBE' || novaAtiv.tipo === 'LEITURA') && (
@@ -660,39 +706,42 @@ export default function DiarioPage() {
                               className="input-light text-[13px] w-full resize-none"
                             />
 
-                            {/* Toggle CH */}
-                            <label className={cn(
-                              "flex items-center gap-3 p-3.5 rounded-xl border cursor-pointer transition-colors",
-                              novaAtiv.contarCH ? "bg-indigo-50 border-indigo-200" : "bg-white border-slate-200"
-                            )}>
-                              <button
-                                type="button"
-                                onClick={() => setNovaAtiv(p => ({ ...p, contarCH: !p.contarCH }))}
-                                className={cn("transition-colors", novaAtiv.contarCH ? "text-indigo-600" : "text-slate-300")}
-                              >
-                                {novaAtiv.contarCH ? <ToggleRight className="w-6 h-6" /> : <ToggleLeft className="w-6 h-6" />}
-                              </button>
+                            {/* Drip Content */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                               <div>
-                                <p className="text-[13px] font-bold text-slate-700">Conta como carga horária</p>
-                                <p className="text-[11px] text-slate-500">
-                                  {novaAtiv.tipo === 'VIDEO_YOUTUBE' && !isTipoEAD
-                                    ? "⚠️ Disponível apenas em turmas Híbridas ou EAD."
-                                    : "Precisa de aprovação do Administrador para ativar."}
-                                </p>
-                              </div>
-                            </label>
-
-                            {novaAtiv.contarCH && (isTipoEAD || novaAtiv.tipo !== 'VIDEO_YOUTUBE') && (
-                              <div className="flex items-center gap-3">
-                                <label className="text-[13px] font-bold text-slate-600 whitespace-nowrap">Horas de CH:</label>
+                                <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1 block">Data de Liberação (opcional)</label>
                                 <input
-                                  type="number" min={0} step={0.5}
-                                  value={novaAtiv.carga_horaria_recompensa}
-                                  onChange={e => setNovaAtiv(p => ({ ...p, carga_horaria_recompensa: Number(e.target.value) }))}
-                                  className="input-light w-24 text-[13px]"
+                                  type="date"
+                                  value={novaAtiv.data_liberacao_data || ''}
+                                  onChange={e => setNovaAtiv(p => ({ ...p, data_liberacao_data: e.target.value }))}
+                                  className="input-light text-[13px] w-full"
                                 />
                               </div>
-                            )}
+                              <div>
+                                <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1 block">Horário de Liberação</label>
+                                <input
+                                  type="time"
+                                  value={novaAtiv.data_liberacao_hora || '00:00'}
+                                  onChange={e => setNovaAtiv(p => ({ ...p, data_liberacao_hora: e.target.value }))}
+                                  className="input-light text-[13px] w-full"
+                                />
+                              </div>
+                            </div>
+
+                            {/* Pré-requisito */}
+                            <div>
+                              <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1 block">🔒 Pré-requisito (opcional)</label>
+                              <select
+                                value={novaAtiv.atividade_pre_requisito_id || ''}
+                                onChange={e => setNovaAtiv(p => ({ ...p, atividade_pre_requisito_id: e.target.value || null }))}
+                                className="input-light text-[13px] w-full"
+                              >
+                                <option value="">Nenhum (acesso livre)</option>
+                                {modulos.flatMap((m: any) => m.atividades || []).map((a: any) => (
+                                  <option key={a.id} value={a.id}>{a.titulo}</option>
+                                ))}
+                              </select>
+                            </div>
 
                             <div className="flex gap-3">
                               <button

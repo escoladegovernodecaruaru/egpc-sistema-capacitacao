@@ -292,11 +292,16 @@ export default function AgendaPage() {
     }
   };
 
-  /* ─── Cancelar pedido ─────────────────────────────────── */
   const handleCancelar = async (id: string) => {
-    if (!confirm("Tem certeza que deseja cancelar esta solicitação? Os espaços serão liberados imediatamente.")) return;
+    const motivo = window.prompt("Por favor, informe o motivo do cancelamento (Os espaços serão liberados imediatamente):");
+    if (motivo === null) return;
+    if (!motivo.trim()) return toast.error("O motivo do cancelamento é obrigatório.");
+    
     try {
-      await fetchApi(`/cursos/solicitacoes/${id}/cancelar/`, { method: "POST" });
+      await fetchApi(`/cursos/solicitacoes/${id}/cancelar/`, { 
+        method: "POST",
+        body: JSON.stringify({ motivo })
+      });
       toast.success("Reserva cancelada com sucesso!");
       carregarDados();
     } catch (err: any) {

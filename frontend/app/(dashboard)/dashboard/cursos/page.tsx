@@ -1,7 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { BookOpen, Filter, RefreshCcw, SearchX, ArrowLeft, Clock, CalendarDays, CheckCircle2, ChevronRight, GraduationCap, User, X, AlertTriangle } from "lucide-react";
+import { useProfile } from "@/contexts/ProfileContext";
+import { 
+  BookOpen, Filter, RefreshCcw, SearchX, ArrowLeft, Clock, 
+  CalendarDays, CheckCircle2, ChevronRight, GraduationCap, 
+  User, X, AlertTriangle, Lock, MonitorPlay, MapPin, Building 
+} from "lucide-react";
 import { fetchApi } from "@/lib/api";
 import { Curso, StatusTurma, Turma } from "@/types/cursos";
 import CursoCard from "@/components/cursos/CursoCard";
@@ -11,8 +16,9 @@ import { toast } from "sonner";
 import { EIXO_LABEL, TIPO_CURSO_LABEL, STATUS_TURMA_LABEL, label } from "@/lib/labels";
 
 // ─── FILTROS ───────────────────────────────────────────────────────────────
-const FILTROS: { value: StatusTurma | "TODOS"; label: string }[] = [
+const FILTROS: { value: StatusTurma | "TODOS" | "MEUS_CURSOS"; label: string }[] = [
   { value: "TODOS",       label: "Todos" },
+  { value: "MEUS_CURSOS", label: "Meus Cursos" },
   { value: "EM_ANDAMENTO", label: "Em Andamento" },
   { value: "PREVISTA",     label: "Prevista" },
   { value: "CONCLUIDA",    label: "Concluída" },
@@ -22,18 +28,21 @@ const FILTROS: { value: StatusTurma | "TODOS"; label: string }[] = [
 ];
 
 export default function CursosPage() {
+  const { profile } = useProfile();
+  
   const [cursos,    setCursos]    = useState<Curso[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [erro,      setErro]      = useState<string | null>(null);
-  const [filtro,    setFiltro]    = useState<StatusTurma | "TODOS">("TODOS");
+  const [filtro,    setFiltro]    = useState<StatusTurma | "TODOS" | "MEUS_CURSOS">("TODOS");
+  const [mostrarOcultos, setMostrarOcultos] = useState(false);
   const [inscricoesAtivas, setInscricoesAtivas] = useState<{ turmas: number[], cursos: number[] }>({ turmas: [], cursos: [] });
 
-  // Novo Controle de View
+  // Controle de View
   const [currentView, setCurrentView] = useState<'list' | 'detalhes'>('list');
   const [cursoSelecionado, setCursoSelecionado] = useState<Curso | null>(null);
   const [turmaParaCronograma, setTurmaParaCronograma] = useState<Turma | null>(null);
   
-  // Novo Controle de Inscrição
+  // Controle de Inscrição
   const [turmaParaInscricao, setTurmaParaInscricao] = useState<Turma | null>(null);
   const [termoAceito, setTermoAceito] = useState(false);
   const [isSubmittingInscricao, setIsSubmittingInscricao] = useState(false);
@@ -42,14 +51,17 @@ export default function CursosPage() {
     setIsLoading(true);
     setErro(null);
     try {
+      // O SEGREDO: Adiciona o query param se o filtro for MEUS_CURSOS
+      const url = filtro === "MEUS_CURSOS" ? "/cursos/?meus_cursos=true" : "/cursos/";
+      
       const [data, inscricoes] = await Promise.all([
-        fetchApi<Curso[]>("/cursos/", { requireAuth: false }),
+        fetchApi<Curso[]>(url, { requireAuth: false }),
         fetchApi<{ turmas: number[], cursos: number[] }>("/cursos/minhas-inscricoes/", { requireAuth: true }).catch(() => ({ turmas: [], cursos: [] }))
       ]);
+      
       setCursos(data);
       setInscricoesAtivas(inscricoes);
       
-      // Atualiza o curso selecionado em background se ele ainda estiver aberto
       if (cursoSelecionado) {
          const atualizado = data.find(c => c.id === cursoSelecionado.id);
          if (atualizado) setCursoSelecionado(atualizado);
@@ -62,14 +74,26 @@ export default function CursosPage() {
     }
   };
 
+  // Recarrega os cursos sempre que o usuário alternar para/de "Meus Cursos"
   useEffect(() => {
     carregarCursos();
-  }, []);
+  }, [filtro]);
 
   const cursosFiltrados = useMemo(() => {
-    if (filtro === "TODOS") return cursos;
-    return cursos.filter((c) => c.status_geral === filtro);
-  }, [cursos, filtro]);
+    let result = cursos;
+    
+    // Como o backend já filtrou "MEUS_CURSOS", só filtramos os outros status no JS
+    if (filtro !== "TODOS" && filtro !== "MEUS_CURSOS") {
+      result = result.filter((c) => c.status_geral === filtro);
+    }
+    
+    // Filtro visual de Inativos/Ocultos
+    if (!mostrarOcultos) {
+      result = result.filter(c => c.is_active !== false);
+    }
+
+    return result;
+  }, [cursos, filtro, mostrarOcultos]);
 
   const abrirDetalhes = (curso: Curso) => {
      setCursoSelecionado(curso);
@@ -80,7 +104,7 @@ export default function CursosPage() {
   const voltarCatalogo = () => {
      setCurrentView('list');
      setTurmaParaCronograma(null);
-     setTimeout(() => setCursoSelecionado(null), 300); // Limpa após a animação de saída se quiser
+     setTimeout(() => setCursoSelecionado(null), 300);
   };
 
   const formatDate = (dateStr: string | null) => {
@@ -103,13 +127,13 @@ export default function CursosPage() {
       });
       
       setTurmaParaInscricao(null);
-      carregarCursos(); // Recarrega os cursos e turmas para atualizar vagas e o status
+      carregarCursos(); 
     } catch (err: any) {
       const msg = err?.message || "Ocorreu um erro inesperado ao realizar a inscrição.";
       
       if (err?.status === 400 && msg.toLowerCase().includes("inscrito")) {
         toast.error("Não foi possível confirmar a inscrição.", {
-          description: "Atenção: Já possuis uma inscrição (ativa ou pendente) noutra turma deste mesmo curso. Não é permitido inscrever-se em mais de uma turma por curso.",
+          description: "Atenção: Já possuis uma inscrição (ativa ou pendente) noutra turma deste mesmo curso.",
         });
       } else {
         toast.error("Não foi possível confirmar a inscrição.", {
@@ -119,6 +143,34 @@ export default function CursosPage() {
     } finally {
       setIsSubmittingInscricao(false);
     }
+  };
+
+  // ─── HELPER FUNCTIONS DE BADGES VISUAIS ───
+  const renderBadgeModalidade = (modalidade: string) => {
+    switch (modalidade) {
+      case 'PRESENCIAL': return <span className="flex items-center gap-1 bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-widest"><Building className="w-3 h-3"/> Presencial</span>;
+      case 'REMOTO': return <span className="flex items-center gap-1 bg-purple-100 text-purple-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-widest"><MonitorPlay className="w-3 h-3"/> EAD</span>;
+      case 'HIBRIDO': return <span className="flex items-center gap-1 bg-teal-100 text-teal-700 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-widest"><MapPin className="w-3 h-3"/> Híbrido</span>;
+      default: return null;
+    }
+  };
+
+  const renderBadgeRestricao = (turma: any) => {
+    if (turma.visibilidade === 'PUBLICA' && (!turma.vinculos_permitidos || turma.vinculos_permitidos.length === 0)) return null;
+
+    let texto = "Restrito";
+    if (turma.vinculos_permitidos && turma.vinculos_permitidos.length > 0) {
+      const perfis = turma.vinculos_permitidos.map((p: string) => p.replace('_', ' '));
+      texto = `Apenas: ${perfis.join(', ')}`;
+    } else if (turma.apenas_cadastro_manual) {
+      texto = "Matrícula Exclusiva da Gestão";
+    }
+
+    return (
+      <span className="flex items-center gap-1 bg-amber-100 text-amber-700 border border-amber-200 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-widest">
+        <Lock className="w-3 h-3"/> {texto}
+      </span>
+    );
   };
 
   return (
@@ -168,6 +220,16 @@ export default function CursosPage() {
                 </button>
               ))}
             </div>
+
+            {/* ── Toggle Ver Ocultos (Apenas Admin) ── */}
+            {profile?.is_staff && (
+              <div className="flex justify-end mt-2">
+                <label className="flex items-center gap-2 cursor-pointer text-sm text-slate-500 font-medium hover:text-indigo-600 transition-colors bg-white px-3 py-1.5 rounded-lg border border-slate-200 shadow-sm">
+                  <input type="checkbox" checked={mostrarOcultos} onChange={(e) => setMostrarOcultos(e.target.checked)} className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"/>
+                  Ver Cursos Ocultos / Inativos (Visão Admin)
+                </label>
+              </div>
+            )}
 
             {/* ── Erro / Skeletons / Vazio ── */}
             {erro && !isLoading && (
@@ -284,13 +346,10 @@ export default function CursosPage() {
                                        </div>
                                        <div>
                                           <h3 className="text-lg font-bold text-slate-800">Turma {turma.codigo}</h3>
-                                          <div className="flex gap-2 mt-1">
-                                             <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded bg-slate-100 text-slate-600">
-                                                {turma.turno}
-                                             </span>
-                                             <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded bg-slate-100 text-slate-600">
-                                                {turma.modalidade}
-                                             </span>
+                                          <div className="flex gap-2 mt-2 flex-wrap">
+                                             {/* Badges Visuais Avançados Injetados Aqui */}
+                                             {renderBadgeModalidade(turma.modalidade)}
+                                             {renderBadgeRestricao(turma)}
                                           </div>
                                        </div>
                                     </div>
@@ -322,13 +381,13 @@ export default function CursosPage() {
                                            </button>
                                         </div>
                                      )}
-                                  </div>
+                                 </div>
 
                                  {/* Direita: Ação */}
-                                 <div className={`p-6 w-full md:w-64 flex flex-col justify-center items-center text-center ${turma.vagas_restantes !== undefined && turma.vagas_restantes > 0 ? 'bg-emerald-50' : 'bg-slate-50'}`}>
+                                 <div className={`p-6 w-full md:w-64 flex flex-col justify-center items-center text-center ${(turma.vagas_restantes ?? turma.vagas) > 0 ? 'bg-emerald-50' : 'bg-slate-50'}`}>
                                     <p className="text-xs uppercase font-black text-slate-500 tracking-wider mb-1">Vagas Restantes</p>
-                                    <p className={`text-3xl font-black mb-4 ${turma.vagas_restantes !== undefined && turma.vagas_restantes > 0 ? 'text-emerald-600' : 'text-slate-400'}`}>
-                                       {turma.vagas_restantes ?? turma.vagas}
+                                    <p className={`text-3xl font-black mb-4 ${(turma.vagas_restantes ?? turma.vagas) > 0 ? 'text-emerald-600' : 'text-amber-500 text-lg'}`}>
+                                       {(turma.vagas_restantes ?? turma.vagas) > 0 ? (turma.vagas_restantes ?? turma.vagas) : 'Fila de Espera'}
                                     </p>
                                     
                                     {(() => {
@@ -339,7 +398,7 @@ export default function CursosPage() {
                                        if (jaInscritoTurma) {
                                           return (
                                              <button disabled className="w-full py-2.5 rounded-xl text-xs font-bold transition-all duration-200 flex justify-center items-center gap-2 bg-indigo-100 text-indigo-700 cursor-not-allowed">
-                                                Sua Inscrição
+                                                <CheckCircle2 className="w-4 h-4"/> Sua Inscrição
                                              </button>
                                           );
                                        }
@@ -352,10 +411,21 @@ export default function CursosPage() {
                                           );
                                        }
 
+                                       if (turma.apenas_cadastro_manual) {
+                                          return (
+                                             <button disabled className="w-full py-2.5 rounded-xl text-xs font-bold transition-all duration-200 flex justify-center items-center gap-2 bg-slate-200 text-slate-500 cursor-not-allowed">
+                                                Matrícula Fechada
+                                             </button>
+                                          );
+                                       }
+
                                        if (isEsgotado) {
                                           return (
-                                             <button disabled className="w-full py-2.5 rounded-xl text-sm font-bold transition-all duration-200 flex justify-center items-center gap-2 bg-red-100 text-red-600 cursor-not-allowed">
-                                                Turma Esgotada
+                                             <button 
+                                                className="w-full py-2.5 rounded-xl text-sm font-bold transition-all duration-200 flex justify-center items-center gap-2 bg-amber-500 hover:bg-amber-600 text-white shadow-md"
+                                                onClick={() => { setTurmaParaInscricao(turma); setTermoAceito(false); }}
+                                             >
+                                                Entrar na Fila
                                              </button>
                                           );
                                        }

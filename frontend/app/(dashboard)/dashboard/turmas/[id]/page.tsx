@@ -5,20 +5,21 @@ import { useParams, useRouter } from "next/navigation";
 import {
   BookOpen, Play, CheckCircle2, Clock, BarChart2, AlertTriangle,
   Award, ChevronLeft, Loader2, Send, MessageSquare, Bell, FileWarning,
-  Lock, Unlock, ChevronDown, ChevronUp, Video, ClipboardList, X
+  Lock, Unlock, ChevronDown, ChevronUp, Video, ClipboardList, X, FileQuestion
 } from "lucide-react";
 import Link from "next/link";
 import { fetchApi } from "@/lib/api";
 import { useProfile } from "@/contexts/ProfileContext";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import QuestionarioPlayer from "./QuestionarioPlayer";
 
 /* ─── Types ─────────────────────────────────────────────────── */
 interface Atividade {
   id: number;
   titulo: string;
   descricao: string | null;
-  tipo: "VIDEO_YOUTUBE" | "LEITURA" | "TAREFA";
+  tipo: "VIDEO_YOUTUBE" | "LEITURA" | "TAREFA" | "QUESTIONARIO";
   url_video: string | null;
   carga_horaria_recompensa: number;
   ordem: number;
@@ -120,6 +121,7 @@ export default function SalaDeAulaPage() {
   const [ping, setPing] = useState<number | null>(null); // atividade_id sendo assistida
   const [pingLoading, setPingLoading] = useState<number | null>(null);
   const [moduloAberto, setModuloAberto] = useState<number | null>(0);
+  const [questionarioAtivoId, setQuestionarioAtivoId] = useState<number | null>(null);
 
   // Chat UI-only (mock local)
   const [mensagens, setMensagens] = useState<ChatMsg[]>([
@@ -194,17 +196,6 @@ export default function SalaDeAulaPage() {
     chatRef.current?.scrollTo({ top: chatRef.current.scrollHeight, behavior: "smooth" });
   }, [mensagens]);
 
-  const handlePing = async (atividadeId: number) => {
-    setPingLoading(atividadeId);
-    try {
-      await fetchApi(`/cursos/atividades/${atividadeId}/ping/`, { method: "POST" });
-    } catch (err: any) {
-      if (err.status !== 429) toast.error("Erro ao registrar progresso.");
-    } finally {
-      setPingLoading(null);
-    }
-  };
-
   const handleConcluir = async (atividadeId: number) => {
     try {
       await fetchApi(`/cursos/atividades/${atividadeId}/concluir/`, { method: "POST" });
@@ -223,7 +214,7 @@ export default function SalaDeAulaPage() {
         };
       });
     } catch (err: any) {
-      toast.error(err.message || "Você ainda não assistiu o tempo mínimo.");
+      toast.error(err.message || "Erro ao marcar atividade como concluída.");
     }
   };
 
@@ -397,7 +388,20 @@ export default function SalaDeAulaPage() {
       {/* ── CONTEÚDO EAD ── */}
       {activeTab === "conteudo" && (
         <div className="space-y-4">
-          {sala.modulos.length === 0 ? (
+          {questionarioAtivoId ? (
+              <QuestionarioPlayer 
+                  atividadeId={questionarioAtivoId} 
+                  onBack={() => setQuestionarioAtivoId(null)} 
+                  onConcluir={() => {
+                      setQuestionarioAtivoId(null);
+                      // Recarrega os dados pra atualizar nota e progresso
+                      setLoading(true);
+                      fetchApi<SalaDeAulaData>(`/cursos/turmas/${turmaId}/sala-de-aula/`)
+                         .then(res => setSala(res))
+                         .finally(() => setLoading(false));
+                  }} 
+              />
+          ) : sala.modulos.length === 0 ? (
             <div className="clean-card p-12 text-center bg-white text-slate-500">
               <Video className="w-10 h-10 mx-auto mb-3 text-slate-300" />
               <p className="font-bold">Nenhum conteúdo disponível ainda.</p>
@@ -444,6 +448,7 @@ export default function SalaDeAulaPage() {
                         <p className="px-6 py-4 text-sm text-slate-400">Nenhuma atividade neste módulo.</p>
                       ) : modulo.atividades.map(ativ => {
                         const isVideo = ativ.tipo === "VIDEO_YOUTUBE";
+                        const isQuestionario = ativ.tipo === "QUESTIONARIO";
                         const vidId = ativ.url_video ? youtubeId(ativ.url_video) : null;
                         return (
                           <div key={ativ.id} className={cn("px-6 py-4 transition-colors", ativ.concluida && "bg-emerald-50/40")}>
@@ -452,10 +457,12 @@ export default function SalaDeAulaPage() {
                                 "w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5",
                                 ativ.concluida ? "bg-emerald-100 text-emerald-600" :
                                 isVideo ? "bg-red-50 text-red-500" :
+                                isQuestionario ? "bg-purple-50 text-purple-500" :
                                 "bg-slate-100 text-slate-500"
                               )}>
                                 {ativ.concluida ? <CheckCircle2 className="w-4 h-4" /> :
                                   isVideo ? <Play className="w-4 h-4" /> :
+                                  isQuestionario ? <FileQuestion className="w-4 h-4" /> :
                                   <BookOpen className="w-4 h-4" />}
                               </div>
                               <div className="flex-1">
@@ -475,15 +482,22 @@ export default function SalaDeAulaPage() {
                                 {isVideo && vidId && (
                                   <div className="mt-3 rounded-xl overflow-hidden border border-slate-200 aspect-video relative bg-slate-900">
                                     <iframe
-                                      src={`https://www.youtube.com/embed/${vidId}`}
+                                      src={`https://www.youtube.com/embed/${vidId}?enablejsapi=1`}
                                       className="w-full h-full"
                                       allowFullScreen
-                                      onPlay={() => {
-                                        // Inicia o ping a cada 60s quando começa a assistir
-                                        if (ping !== ativ.id) {
-                                          setPing(ativ.id);
-                                          handlePing(ativ.id);
-                                        }
+                                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                      onLoad={(e) => {
+                                        // Detecta evento PLAYING (state=1) via postMessage da YouTube Iframe API
+                                        const handler = (event: MessageEvent) => {
+                                          try {
+                                            const data = JSON.parse(event.data);
+                                            if (data.event === 'onStateChange' && data.info === 1) {
+                                              if (!ativ.concluida) handleConcluir(ativ.id);
+                                              window.removeEventListener('message', handler);
+                                            }
+                                          } catch {}
+                                        };
+                                        window.addEventListener('message', handler);
                                       }}
                                     />
                                   </div>
@@ -501,19 +515,25 @@ export default function SalaDeAulaPage() {
                                   </a>
                                 )}
 
-                                {/* Botão concluir */}
-                                {!ativ.concluida && (
+                                {/* Ação de Questionário */}
+                                {isQuestionario && !ativ.concluida && (
+                                  <div className="mt-3 p-4 rounded-xl border border-purple-100 bg-purple-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                    <div>
+                                      <p className="text-[12px] font-bold text-purple-800">Avaliação de Conhecimento</p>
+                                      <p className="text-[11px] text-purple-600 mt-0.5">Responda ao questionário para contabilizar a nota no módulo.</p>
+                                    </div>
+                                    <button
+                                      onClick={() => setQuestionarioAtivoId(ativ.id)}
+                                      className="px-4 py-2 bg-purple-600 text-white text-[12px] font-bold rounded-lg hover:bg-purple-700 transition-colors shrink-0 shadow-sm"
+                                    >
+                                      Iniciar Avaliação
+                                    </button>
+                                  </div>
+                                )}
+
+                                {/* Botão concluir — apenas para leitura/tarefa (vídeos são marcados automaticamente no play) */}
+                                {!ativ.concluida && !isVideo && !isQuestionario && (
                                   <div className="flex items-center gap-2 mt-3">
-                                    {isVideo && (
-                                      <button
-                                        onClick={() => handlePing(ativ.id)}
-                                        disabled={pingLoading === ativ.id}
-                                        className="px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600 text-[12px] font-bold hover:bg-slate-200 transition-colors flex items-center gap-1.5 disabled:opacity-60"
-                                      >
-                                        {pingLoading === ativ.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Clock className="w-3 h-3" />}
-                                        Registrar 1 min
-                                      </button>
-                                    )}
                                     <button
                                       onClick={() => handleConcluir(ativ.id)}
                                       className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-[12px] font-bold hover:bg-emerald-700 transition-colors flex items-center gap-1.5"

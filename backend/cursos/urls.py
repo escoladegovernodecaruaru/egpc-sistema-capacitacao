@@ -11,7 +11,8 @@ from .views import (
     SalaDeAulaView, ConcluirAtividadeView, PingAtividadeView,
     MinhasGestoesView, GestaoAlunosTurmaView,
     ModuloViewSet, AtividadeViewSet, AtividadeAprovarView,
-    AdminStatsView,
+    AdminStatsView, AlunoStatsView, TurmaDestroyView,
+    QuestionarioView, QuestionarioCopiarView, SubmeterQuestionarioView,
 )
 
 app_name = 'cursos'
@@ -19,6 +20,7 @@ app_name = 'cursos'
 urlpatterns = [
     path('', CursoListView.as_view(), name='lista-cursos'),
     path('turmas/', TurmaCreateView.as_view(), name='criar-turma'),
+    path('turmas/<int:pk>/deletar/', TurmaDestroyView.as_view(), name='deletar-turma'),
     path('turmas/<int:pk>/', TurmaUpdateView.as_view(), name='editar-turma'),
     path('turmas/<int:turma_id>/inscrever/', InscreverTurmaView.as_view(), name='inscrever-turma'),
     path('inscricoes/<int:pk>/status/', AprovarInscricaoView.as_view(), name='aprovar-inscricao'),
@@ -48,6 +50,11 @@ urlpatterns = [
     path('modulos/<int:modulo_id>/atividades/', AtividadeViewSet.as_view(), name='gerenciar-atividades'),
     path('atividades/<int:pk>/detalhe/', AtividadeViewSet.as_view(), name='detalhe-atividade'),
 
+    path('atividades/<int:atividade_id>/questionario/', QuestionarioView.as_view(), name='questionario-atividade'),
+    path('atividades/<int:atividade_origem_id>/copiar-questionario/<int:atividade_destino_id>/', QuestionarioCopiarView.as_view(), name='copiar-questionario'),
+    path('atividades/<int:atividade_id>/submeter-questionario/', SubmeterQuestionarioView.as_view(), name='submeter-questionario'),
+
     # Admin Stats
     path('admin-stats/', AdminStatsView.as_view(), name='admin-stats'),
+    path('aluno-stats/', AlunoStatsView.as_view(), name='aluno-stats'),
 ]

@@ -9,7 +9,10 @@ import { cn } from "@/lib/utils";
 
 export default function MinhaEquipePage() {
   const [aprovacoes, setAprovacoes] = useState<any[]>([]);
+  const [membros, setMembros] = useState<any[]>([]);
   const [isLoadingAprovacoes, setIsLoadingAprovacoes] = useState(true);
+  const [isLoadingMembros, setIsLoadingMembros] = useState(false);
+  const [abaAtual, setAbaAtual] = useState<"aprovacoes" | "membros">("aprovacoes");
   const [showNegarModal, setShowNegarModal] = useState<number | null>(null);
   const [justificativa, setJustificativa] = useState("");
 
@@ -25,9 +28,25 @@ export default function MinhaEquipePage() {
     }
   };
 
+  const carregarMembros = async () => {
+    setIsLoadingMembros(true);
+    try {
+      const data = await fetchApi<any[]>("/users/equipe/", { requireAuth: true });
+      setMembros(data);
+    } catch (err) {
+      toast.error("Erro ao carregar equipe.");
+    } finally {
+      setIsLoadingMembros(false);
+    }
+  };
+
   useEffect(() => {
-    carregarAprovacoes();
-  }, []);
+    if (abaAtual === "aprovacoes") {
+      carregarAprovacoes();
+    } else {
+      carregarMembros();
+    }
+  }, [abaAtual]);
 
   const handleAprovar = async (id: number) => {
      try {
@@ -58,6 +77,19 @@ export default function MinhaEquipePage() {
      }
   }
 
+  const handleResponderChefia = async (id_relacao: number, acao: "ACEITAR" | "RECUSAR") => {
+    try {
+      await fetchApi("/users/equipe/responder/", {
+        method: "POST",
+        body: JSON.stringify({ id_relacao, acao })
+      });
+      toast.success(acao === "ACEITAR" ? "Membro aceito na equipe!" : "Membro removido da equipe.");
+      carregarMembros();
+    } catch (err: any) {
+      toast.error(err.message || "Erro ao atualizar membro.");
+    }
+  }
+
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return "--";
     const [ano, mes, dia] = dateStr.split('-');
@@ -70,18 +102,36 @@ export default function MinhaEquipePage() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
           <div className="flex items-center gap-4">
             <div>
-              <h1 className="text-2xl font-bold text-slate-800 tracking-tight flex items-center gap-2"><Users className="w-6 h-6 text-indigo-600" /> Aprovações da Equipe</h1>
-              <p className="text-sm text-slate-500 mt-1">Avalie as solicitações de inscrição dos servidores que indicaram você como chefia imediata.</p>
+              <h1 className="text-2xl font-bold text-slate-800 tracking-tight flex items-center gap-2"><Users className="w-6 h-6 text-indigo-600" /> Minha Equipe</h1>
+              <p className="text-sm text-slate-500 mt-1">Gerencie os membros da sua equipe e avalie as solicitações de inscrição.</p>
             </div>
           </div>
         </div>
 
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex gap-4 items-start">
-           <Info className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-           <p className="text-sm text-amber-900 leading-relaxed">
-             <strong>Atenção:</strong> Ao autorizar, você atesta a ciência dos horários e garante que a ausência do servidor não prejudicará as atividades do setor, conforme previsto no Termo de Compromisso.
-           </p>
+        {/* Abas */}
+        <div className="flex border-b border-slate-200">
+          <button
+            onClick={() => setAbaAtual("aprovacoes")}
+            className={cn("px-6 py-3 font-bold text-sm border-b-2 transition-colors", abaAtual === "aprovacoes" ? "border-indigo-600 text-indigo-600" : "border-transparent text-slate-500 hover:text-slate-700")}
+          >
+            Aprovações Pendentes
+          </button>
+          <button
+            onClick={() => setAbaAtual("membros")}
+            className={cn("px-6 py-3 font-bold text-sm border-b-2 transition-colors", abaAtual === "membros" ? "border-indigo-600 text-indigo-600" : "border-transparent text-slate-500 hover:text-slate-700")}
+          >
+            Membros da Equipe
+          </button>
         </div>
+
+        {abaAtual === "aprovacoes" && (
+          <>
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex gap-4 items-start">
+              <Info className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+              <p className="text-sm text-amber-900 leading-relaxed">
+                <strong>Atenção:</strong> Ao autorizar, você atesta a ciência dos horários e garante que a ausência do servidor não prejudicará as atividades do setor, conforme previsto no Termo de Compromisso.
+              </p>
+            </div>
 
         <div className="grid grid-cols-1 gap-4">
           {isLoadingAprovacoes ? (
@@ -116,6 +166,53 @@ export default function MinhaEquipePage() {
             ))
           )}
         </div>
+          </>
+        )}
+
+        {abaAtual === "membros" && (
+          <div className="grid grid-cols-1 gap-4">
+            {isLoadingMembros ? (
+              <div className="p-12 flex justify-center"><Loader2 className="w-8 h-8 animate-spin text-indigo-500" /></div>
+            ) : membros.length === 0 ? (
+              <div className="clean-card p-12 text-center text-slate-500 flex flex-col items-center gap-3">
+                 <Users className="w-12 h-12 text-slate-300" />
+                 <p className="font-bold">Nenhum membro na equipe.</p>
+                 <p className="text-sm">Nenhum servidor indicou você como chefia imediata no perfil.</p>
+              </div>
+            ) : (
+              membros.map(membro => (
+                <div key={membro.id_relacao} className="clean-card p-6 flex flex-col md:flex-row items-center gap-6 justify-between bg-white border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
+                  <div className="space-y-2 flex-1">
+                    <div className="flex items-center gap-3">
+                      <p className="text-lg font-bold text-slate-800">{membro.servidor.nome_completo}</p>
+                      {membro.status === "PENDENTE" && (
+                        <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-700">Pendente Aprovação</span>
+                      )}
+                      {membro.status === "ACEITO" && (
+                        <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-700">Membro Ativo</span>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-3 text-sm text-slate-600">
+                       <span className="font-semibold">{membro.servidor.email}</span>
+                       <span>•</span>
+                       <span>CPF: {membro.servidor.cpf}</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 w-full md:w-auto">
+                    {membro.status === "PENDENTE" ? (
+                      <>
+                        <button onClick={() => handleResponderChefia(membro.id_relacao, "RECUSAR")} className="px-4 py-2 bg-red-50 text-red-600 font-bold rounded-lg hover:bg-red-100 transition-colors flex-1 md:flex-none text-center">Recusar</button>
+                        <button onClick={() => handleResponderChefia(membro.id_relacao, "ACEITAR")} className="px-6 py-2 bg-emerald-500 text-white font-bold rounded-lg hover:bg-emerald-600 shadow-md flex-1 md:flex-none text-center">Aceitar Vínculo</button>
+                      </>
+                    ) : (
+                      <button onClick={() => handleResponderChefia(membro.id_relacao, "RECUSAR")} className="px-4 py-2 border border-red-200 text-red-600 font-bold rounded-lg hover:bg-red-50 transition-colors flex-1 md:flex-none text-center">Desligar da Equipe</button>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        )}
       </motion.div>
 
       {/* Modal de Negar */}

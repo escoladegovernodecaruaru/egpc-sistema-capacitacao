@@ -9,11 +9,11 @@ class ProfileManager(BaseUserManager):
         if not cpf:
             raise ValueError('O CPF deve ser informado')
         user = self.model(cpf=cpf, **extra_fields)
-        # Como o auth é gerido pelo Supabase, não gerimos senha real no Django.
-        # Definimos uma senha inutilizável por padrão, mas pode ser definido para admin.
-        user.set_unusable_password() 
         if password:
             user.set_password(password)
+        else:
+            user.set_unusable_password() # Apenas para casos excepcionais sem senha
+            
         user.save(using=self._db)
         return user
 
@@ -23,10 +23,6 @@ class ProfileManager(BaseUserManager):
         return self.create_user(cpf, password, **extra_fields)
 
 class Profile(AbstractBaseUser, PermissionsMixin):
-    """
-    Modelo Customizado de Usuário cuja Primary Key é um UUID que mapeia
-    diretamente para auth.users do Supabase.
-    """
     class UserType(models.TextChoices):
         SERVIDOR_ATIVO = 'SERVIDOR_ATIVO', _('Servidor Ativo')
         CIDADAO = 'CIDADAO', _('Cidadão')
@@ -39,7 +35,7 @@ class Profile(AbstractBaseUser, PermissionsMixin):
     nome_completo = models.CharField(max_length=255, verbose_name="Nome Completo")
     nome_social = models.CharField(max_length=255, blank=True, null=True, verbose_name="Nome Social")
     email = models.EmailField(unique=True, verbose_name="E-mail")
-    telefone = models.CharField(max_length=20, unique=True, verbose_name="Telefone", null=True, blank=True)
+    telefone = models.CharField(max_length=20, verbose_name="Telefone", null=True, blank=True)
     
     tipo_usuario = models.CharField(
         max_length=20,
@@ -69,6 +65,7 @@ class Profile(AbstractBaseUser, PermissionsMixin):
         help_text="Concede permissão para solicitar reservas de espaços institucionais."
     )
     data_ultima_confirmacao = models.DateField(default=timezone.now, verbose_name="Última Confirmação (90 dias)")
+    data_nascimento = models.DateField(null=True, blank=True, verbose_name="Data de Nascimento")
 
     # Campos padrão Django
     is_active = models.BooleanField(default=True)
@@ -94,3 +91,131 @@ class Profile(AbstractBaseUser, PermissionsMixin):
         if self.bloqueado_ate and self.bloqueado_ate > timezone.now().date():
             return True
         return False
+
+class OTPCode(models.Model):
+    class Proposito(models.TextChoices):
+        REGISTRO = 'registro', _('Registro')
+        RECUPERACAO = 'recuperacao', _('Recuperação de Senha')
+
+    email = models.EmailField(verbose_name="E-mail")
+    codigo = models.CharField(max_length=6, verbose_name="Código OTP")
+    proposito = models.CharField(max_length=20, choices=Proposito.choices, default=Proposito.REGISTRO)
+    criado_em = models.DateTimeField(auto_now_add=True)
+    expira_em = models.DateTimeField()
+    usado = models.BooleanField(default=False)
+
+    class Meta:
+        db_table = 'auth_otp_codes'
+        verbose_name = 'Código OTP'
+        verbose_name_plural = 'Códigos OTP'
+
+    def is_valid(self):
+        return not self.usado and timezone.now() <= self.expira_em
+
+class ServidorRH(models.Model):
+    cpf = models.CharField(max_length=11, verbose_name="CPF")
+    matricula = models.CharField(max_length=50, unique=True, verbose_name="Matrícula")
+    nome_base = models.CharField(max_length=255, verbose_name="Nome na Base")
+    cargo = models.CharField(max_length=255, blank=True, null=True, verbose_name="Cargo")
+    importado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'rh_servidores_base'
+        verbose_name = 'Servidor RH (Base Espelho)'
+        verbose_name_plural = 'Servidores RH'
+        constraints = [
+            models.UniqueConstraint(fields=['cpf', 'matricula'], name='unique_cpf_matricula')
+        ]
+
+    def __str__(self):
+        return f"{self.matricula} - {self.cpf}"
+
+class TicketDenunciaMatricula(models.Model):
+    class Status(models.TextChoices):
+        ABERTO = 'ABERTO', _('Aberto')
+        EM_ANALISE = 'EM_ANALISE', _('Em Análise')
+        RESOLVIDO = 'RESOLVIDO', _('Resolvido')
+
+    user_denunciante = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name='denuncias_feitas')
+    matricula_reclamada = models.CharField(max_length=50, verbose_name="Matrícula Reclamada")
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.ABERTO)
+    criado_em = models.DateTimeField(auto_now_add=True)
+    resolvido_em = models.DateTimeField(null=True, blank=True)
+    resolvido_por = models.ForeignKey(Profile, on_delete=models.SET_NULL, null=True, blank=True, related_name='denuncias_resolvidas')
+
+    class Meta:
+        db_table = 'rh_tickets_denuncia'
+        verbose_name = 'Ticket de Denúncia'
+        verbose_name_plural = 'Tickets de Denúncia'
+
+    def __str__(self):
+        return f"Ticket {self.id} - {self.matricula_reclamada}"
+
+class RelacaoChefia(models.Model):
+    class Status(models.TextChoices):
+        PENDENTE = 'PENDENTE', _('Pendente')
+        ACEITO = 'ACEITO', _('Aceito')
+
+    servidor = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name='chefias_solicitadas')
+    chefe = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name='subordinados')
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDENTE)
+    data_solicitacao = models.DateTimeField(auto_now_add=True)
+    atualizado_em = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'users_relacao_chefia'
+        verbose_name = 'Relação de Chefia'
+        verbose_name_plural = 'Relações de Chefia'
+        constraints = [
+            models.UniqueConstraint(fields=['servidor', 'chefe'], name='unique_servidor_chefe')
+        ]
+
+    def __str__(self):
+        return f"{self.servidor.nome_completo} -> Chefe: {self.chefe.nome_completo} [{self.status}]"
+
+class Secretaria(models.Model):
+    """
+    Lista de secretarias gerenciável pelo administrador.
+    Exibida como '{SIGLA} - {NOME}' nos formulários de cadastro e perfil.
+    """
+    sigla = models.CharField(
+        max_length=15,
+        unique=True,
+        verbose_name="Sigla",
+        help_text="Ex: SAD (máx. 15 caracteres)"
+    )
+    nome = models.CharField(
+        max_length=255,
+        verbose_name="Nome completo",
+        help_text="Ex: Secretaria de Administração"
+    )
+    is_active = models.BooleanField(default=True, verbose_name="Ativa")
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Secretaria"
+        verbose_name_plural = "Secretarias"
+        ordering = ['sigla']
+
+    def __str__(self):
+        return f"{self.sigla} - {self.nome}"
+
+
+class AuditLog(models.Model):
+    user = models.ForeignKey(Profile, on_delete=models.SET_NULL, null=True, blank=True)
+    method = models.CharField(max_length=10)
+    path = models.CharField(max_length=255)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.TextField(null=True, blank=True)
+    payload = models.JSONField(null=True, blank=True)
+    response_status = models.IntegerField(null=True, blank=True, verbose_name="Status HTTP de Saída")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'audit_logs'
+        verbose_name = 'Log de Auditoria'
+        verbose_name_plural = 'Logs de Auditoria'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.method} {self.path} - {self.user.cpf if self.user else 'Anon'}"

@@ -36,17 +36,32 @@ export interface Profile {
   secretaria:               string | null;
   matricula:                string | null;
   empresa:                  string | null;
-  cpf_chefe:                string | null;
+  matricula_chefe:          string | null;
   foto_perfil_url:          string | null;
   esta_de_licenca:          boolean;
   bloqueado_ate:            string | null;
   data_ultima_confirmacao:  string;
+  data_nascimento:          string | null;
   esta_bloqueado:           boolean;
   is_active:                boolean;
   is_staff:                 boolean;
   is_solicitante:           boolean;
   is_instrutor:             boolean;
   criado_em:                string;
+}
+
+/**
+ * Verifica se o perfil está completamente preenchido.
+ * Usuários com dados de servidor (matrícula, secretaria, matrícula_chefe) devem ter
+ * todos esses campos preenchidos. Cidadãos apenas precisam dos campos básicos de cadastro.
+ */
+export function perfilCompleto(profile: Profile): boolean {
+  const TIPOS_SERVIDOR = ['SERVIDOR_ATIVO', 'ESTAGIARIO', 'TERCEIRIZADO'];
+  if (TIPOS_SERVIDOR.includes(profile.tipo_usuario)) {
+    return !!(profile.matricula && profile.secretaria && profile.matricula_chefe);
+  }
+  // Cidadãos e outros: apenas telefone
+  return !!(profile.telefone);
 }
 
 interface ProfileContextValue {

@@ -24,7 +24,10 @@ export interface Turma {
   instrutor_nome: string | null;
   status: StatusTurma;
   modalidade: string;
+  visibilidade?: string;
   eventos: EventoTurma[];
+  vinculos_permitidos: string[];
+  apenas_cadastro_manual: boolean;
 }
 
 export interface Curso {
@@ -33,8 +36,11 @@ export interface Curso {
   titulo: string;
   ementa: string;
   eixo?: string;
+  num_processo?: string;
+  memorando?: string;
   tipo: "CENTRALIZADO" | "DESCENTRALIZADO";
   status_geral: StatusTurma;
+  is_active?: boolean;
   turmas?: Turma[];
 }
 

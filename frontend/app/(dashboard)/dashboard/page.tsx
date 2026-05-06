@@ -5,7 +5,7 @@ import { useProfile } from "@/contexts/ProfileContext";
 import {
   BookOpen, GraduationCap, TrendingUp, ArrowRight, Loader2,
   ChevronLeft, ChevronRight, Users, DollarSign, ClipboardCheck,
-  BookMarked, BarChart3, Calendar
+  BookMarked, BarChart3, Calendar, CheckCircle2, UserX, FileWarning, Ban, Percent
 } from "lucide-react";
 import Link from "next/link";
 import { fetchApi } from "@/lib/api";
@@ -21,6 +21,25 @@ interface AdminStats {
   total_matriculas: number;
   total_usuarios: number;
   custo_total: number;
+  alunos_aprovados: number;
+  desistentes: number;
+  reprovados_nota: number;
+  reprovados_falta: number;
+}
+
+interface AlunoStats {
+  matriculas_realizadas: number;
+  cursos_concluidos: number;
+  total_horas_capacitacao: number;
+  percentual_presenca: number;
+  proxima_aula?: {
+    turma_id: number;
+    codigo_turma: string;
+    titulo_curso: string;
+    data: string;
+    hora_inicio: string;
+    espaco: string;
+  } | null;
 }
 
 interface InscricaoDetalhe {
@@ -39,10 +58,10 @@ interface InscricaoDetalhe {
 const STATUS_MAP: Record<string, { label: string; className: string }> = {
   pendente:        { label: 'Pendente',       className: 'bg-amber-100 text-amber-800 border-amber-200' },
   aprovado_chefia: { label: 'Aprov. Chefia',  className: 'bg-amber-100 text-amber-800 border-amber-200' },
-  inscrito:        { label: 'Inscrito',        className: 'bg-emerald-100 text-emerald-800 border-emerald-200' },
-  concluido:       { label: 'Concluído',       className: 'bg-emerald-100 text-emerald-800 border-emerald-200' },
-  cancelado:       { label: 'Cancelado',       className: 'bg-red-100 text-red-800 border-red-200' },
-  reprovado:       { label: 'Reprovado',       className: 'bg-red-100 text-red-800 border-red-200' },
+  inscrito:        { label: 'Inscrito',       className: 'bg-emerald-100 text-emerald-800 border-emerald-200' },
+  concluido:       { label: 'Concluído',      className: 'bg-emerald-100 text-emerald-800 border-emerald-200' },
+  cancelado:       { label: 'Cancelado',      className: 'bg-red-100 text-red-800 border-red-200' },
+  reprovado:       { label: 'Reprovado',      className: 'bg-red-100 text-red-800 border-red-200' },
 };
 
 const MODALIDADE_MAP: Record<string, { label: string; color: string }> = {
@@ -66,11 +85,13 @@ export default function DashboardPage() {
   const [inscricoes, setInscricoes] = useState<InscricaoDetalhe[]>([]);
   const [loadingJornada, setLoadingJornada] = useState(true);
   const [adminStats, setAdminStats] = useState<AdminStats | null>(null);
+  const [alunoStats, setAlunoStats] = useState<AlunoStats | null>(null);
   const [carouselIndex, setCarouselIndex] = useState(0);
 
   useEffect(() => {
     if (!profile) return;
 
+    // 1. Carrega os dados de jornada do aluno (carousel)
     async function loadMinhasInscricoes() {
       try {
         const res = await fetchApi<any>('/cursos/minhas-inscricoes/detalhes/');
@@ -83,18 +104,29 @@ export default function DashboardPage() {
       }
     }
 
-    async function loadAdminStats() {
-      if (!profile || !profile.is_staff) return;
+    // 2. Carrega as métricas (Aluno para todos; Admin apenas se for staff)
+    async function loadStats() {
+      // Busca de aluno-stats
       try {
-        const stats = await fetchApi<AdminStats>('/cursos/admin-stats/');
-        setAdminStats(stats);
+        const alunoData = await fetchApi<AlunoStats>('/cursos/aluno-stats/');
+        setAlunoStats(alunoData);
       } catch (err) {
-        console.error("Erro ao carregar stats de admin:", err);
+        console.error("Erro ao carregar estatísticas do aluno:", err);
+      }
+
+      // Busca gerencial em paralelo — erro aqui NÃO afeta o painel do aluno
+      if (profile?.is_staff) {
+        try {
+          const adminData = await fetchApi<AdminStats>('/cursos/admin-stats/');
+          setAdminStats(adminData);
+        } catch (err) {
+          console.error("Erro ao carregar estatísticas admin:", err);
+        }
       }
     }
 
     loadMinhasInscricoes();
-    loadAdminStats();
+    loadStats();
   }, [profile]);
 
   const prevCard = useCallback(() => {
@@ -125,7 +157,7 @@ export default function DashboardPage() {
   const inscricaoAtual = inscricoes[carouselIndex];
 
   return (
-    <div className="space-y-8 animate-[fade-in_0.4s_ease-out] text-slate-800">
+    <div className="space-y-8 animate-[fade-in_0.4s_ease-out] text-slate-800 max-w-7xl mx-auto pb-12">
 
       {/* ── HEADER DE BOAS-VINDAS ── */}
       <section className="clean-card bg-primary border-primary-dark p-8 md:p-10 relative overflow-hidden text-white shadow-lg">
@@ -142,7 +174,206 @@ export default function DashboardPage() {
         </div>
       </section>
 
-      {/* ── MÓDULOS (CARDS) ── */}
+      {/* ── VISÃO GERAL DA GESTÃO (ADMIN) - ELEVADA AO TOPO ── */}
+      {isAdmin && adminStats && (
+        <section className="clean-card p-6 md:p-8 bg-slate-50 border-slate-200 shadow-none">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-xl bg-primary-muted flex items-center justify-center border border-primary/20">
+                <TrendingUp className="w-6 h-6 text-primary" />
+              </div>
+              <div>
+                <h2 className="text-xl font-extrabold text-slate-800 tracking-tight">Visão Geral da Gestão</h2>
+                <p className="text-[12px] text-slate-500 mt-0.5">Métricas consolidadas do portal</p>
+              </div>
+            </div>
+            <span className="px-3 py-1.5 rounded-lg bg-primary text-xs font-bold text-white uppercase tracking-wider w-fit shadow-md shadow-primary/20">
+              Administrador
+            </span>
+          </div>
+
+          {/* Grid Principal de Métricas */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-4 mb-6">
+            {[
+              { label: 'Turmas Ativas', value: adminStats.turmas_ativas, icon: <BookMarked className="w-5 h-5" />, color: 'text-emerald-600', bg: 'bg-emerald-50', border: 'border-emerald-100' },
+              { label: 'Turmas Previstas', value: adminStats.turmas_previstas, icon: <Calendar className="w-5 h-5" />, color: 'text-blue-600', bg: 'bg-blue-50', border: 'border-blue-100' },
+              { label: 'Matrículas', value: adminStats.total_matriculas, icon: <Users className="w-5 h-5" />, color: 'text-indigo-600', bg: 'bg-indigo-50', border: 'border-indigo-100' },
+              { label: 'Aprovados', value: adminStats.alunos_aprovados, icon: <CheckCircle2 className="w-5 h-5" />, color: 'text-emerald-600', bg: 'bg-emerald-50', border: 'border-emerald-200' },
+              { label: 'Reprov. Falta', value: adminStats.reprovados_falta, icon: <UserX className="w-5 h-5" />, color: 'text-orange-500', bg: 'bg-orange-50', border: 'border-orange-200' },
+              { label: 'Reprov. Nota', value: adminStats.reprovados_nota, icon: <FileWarning className="w-5 h-5" />, color: 'text-red-500', bg: 'bg-red-50', border: 'border-red-200' },
+            ].map((m) => (
+              <div key={m.label} className={cn('p-4 rounded-2xl bg-white border flex flex-col gap-2', m.border)}>
+                <div className={cn('w-9 h-9 rounded-lg flex items-center justify-center', m.bg, m.color)}>
+                  {m.icon}
+                </div>
+                <p className="text-[11px] text-slate-500 font-bold uppercase tracking-wider leading-tight">{m.label}</p>
+                <p className={cn('font-black text-2xl mt-auto', m.value !== undefined ? m.color : 'text-slate-300')}>
+                  {m.value}
+                </p>
+              </div>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Gráfico de Eficiência (Aprovação vs Evasão/Reprovação) */}
+            <div className="bg-white border border-slate-200 rounded-2xl p-6 flex flex-col justify-center">
+              <h3 className="text-sm font-bold text-slate-700 uppercase tracking-widest mb-4">Eficiência Geral</h3>
+              
+              <div className="space-y-4 w-full">
+                {/* Barra Aprovação */}
+                <div>
+                  <div className="flex justify-between text-xs font-bold mb-1">
+                    <span className="text-emerald-600">Alunos Aprovados</span>
+                    <span className="text-slate-600">{adminStats.alunos_aprovados}</span>
+                  </div>
+                  <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden">
+                    <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${Math.max(5, (adminStats.alunos_aprovados / Math.max(1, adminStats.total_matriculas)) * 100)}%` }} />
+                  </div>
+                </div>
+                
+                {/* Barra Reprovação Nota */}
+                <div>
+                  <div className="flex justify-between text-xs font-bold mb-1">
+                    <span className="text-red-500">Reprovados por Nota</span>
+                    <span className="text-slate-600">{adminStats.reprovados_nota}</span>
+                  </div>
+                  <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden">
+                    <div className="h-full bg-red-400 rounded-full" style={{ width: `${Math.max(5, (adminStats.reprovados_nota / Math.max(1, adminStats.total_matriculas)) * 100)}%` }} />
+                  </div>
+                </div>
+
+                {/* Barra Reprovação Falta */}
+                <div>
+                  <div className="flex justify-between text-xs font-bold mb-1">
+                    <span className="text-orange-500">Reprovados por Falta</span>
+                    <span className="text-slate-600">{adminStats.reprovados_falta}</span>
+                  </div>
+                  <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden">
+                    <div className="h-full bg-orange-400 rounded-full" style={{ width: `${Math.max(5, (adminStats.reprovados_falta / Math.max(1, adminStats.total_matriculas)) * 100)}%` }} />
+                  </div>
+                </div>
+
+                {/* Barra Desistentes */}
+                <div>
+                  <div className="flex justify-between text-xs font-bold mb-1">
+                    <span className="text-slate-500">Desistentes (Cancelamentos)</span>
+                    <span className="text-slate-600">{adminStats.desistentes}</span>
+                  </div>
+                  <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden">
+                    <div className="h-full bg-slate-400 rounded-full" style={{ width: `${Math.max(5, (adminStats.desistentes / Math.max(1, adminStats.total_matriculas)) * 100)}%` }} />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Outras Infos Adicionais */}
+            <div className="flex flex-col gap-4 justify-between">
+              <div className="bg-white border border-slate-200 rounded-2xl p-5 flex items-center gap-4">
+                <div className="w-12 h-12 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center shrink-0">
+                  <DollarSign className="w-6 h-6" />
+                </div>
+                <div>
+                  <p className="text-[11px] text-slate-500 font-bold uppercase tracking-widest">Custo Total em Turmas</p>
+                  <p className="text-xl font-black text-slate-800">{formatCurrency(adminStats.custo_total)}</p>
+                </div>
+              </div>
+
+              {adminStats.aprovacoes_pendentes > 0 ? (
+                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 flex items-center justify-between">
+                  <div>
+                    <p className="text-[11px] text-amber-600 font-bold uppercase tracking-widest mb-1">Ações Pendentes</p>
+                    <p className="text-sm font-semibold text-amber-800">
+                      Há {adminStats.aprovacoes_pendentes} inscrições aguardando aprovação.
+                    </p>
+                  </div>
+                  <Link href="/dashboard/equipe" className="px-4 py-2 bg-white text-amber-700 text-xs font-bold rounded-lg border border-amber-200 hover:bg-amber-100 transition-colors shrink-0">
+                    Ver Equipe
+                  </Link>
+                </div>
+              ) : (
+                <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-5 flex items-center gap-3">
+                  <CheckCircle2 className="w-6 h-6 text-emerald-600" />
+                  <div>
+                    <p className="text-sm font-semibold text-emerald-800">Tudo em dia!</p>
+                    <p className="text-xs text-emerald-600">Nenhuma aprovação pendente.</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* ── VISÃO DO ALUNO (Para todos) ── */}
+      {alunoStats && (
+        <section className="space-y-4">
+          <h2 className="text-lg font-bold text-slate-800">Minha Jornada de Capacitação</h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            
+            <div className="clean-card p-5 flex items-center gap-4 bg-white border border-slate-200 hover:border-indigo-200 transition-colors">
+              <div className="p-3 bg-indigo-50 text-indigo-600 rounded-xl"><BookOpen className="w-6 h-6" /></div>
+              <div>
+                <p className="text-2xl font-black text-slate-800">{alunoStats.matriculas_realizadas}</p>
+                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Matrículas Realizadas</p>
+              </div>
+            </div>
+
+            <div className="clean-card p-5 flex items-center gap-4 bg-white border border-slate-200 hover:border-emerald-200 transition-colors">
+              <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl"><GraduationCap className="w-6 h-6" /></div>
+              <div>
+                <p className="text-2xl font-black text-slate-800">{alunoStats.cursos_concluidos}</p>
+                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Cursos Concluídos</p>
+              </div>
+            </div>
+
+            <div className="clean-card p-5 flex items-center gap-4 bg-white border border-slate-200 hover:border-blue-200 transition-colors">
+              <div className="p-3 bg-blue-50 text-blue-600 rounded-xl"><Percent className="w-6 h-6" /></div>
+              <div>
+                <p className="text-2xl font-black text-slate-800">{alunoStats.percentual_presenca}%</p>
+                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">Média de Presença</p>
+              </div>
+            </div>
+
+          </div>
+        </section>
+      )}
+
+      {/* ── PRÓXIMA AULA EM DESTAQUE ── */}
+      {alunoStats?.proxima_aula && (
+        <section className="clean-card bg-indigo-600 border-indigo-700 text-white p-6 relative overflow-hidden shadow-md mb-6">
+          <div className="absolute top-0 right-0 w-48 h-48 bg-indigo-400 rounded-full blur-[50px] opacity-30 -translate-y-1/2 translate-x-1/4 pointer-events-none" />
+          
+          <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 rounded-full bg-indigo-500 flex items-center justify-center shrink-0 border border-indigo-400 shadow-inner">
+                <Calendar className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <p className="text-[11px] font-bold text-indigo-200 uppercase tracking-widest mb-1 flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse"></span>
+                  Sua Próxima Aula
+                </p>
+                <h3 className="text-lg font-bold leading-tight">{alunoStats.proxima_aula.titulo_curso}</h3>
+                <p className="text-sm text-indigo-100 mt-1">
+                  Turma {alunoStats.proxima_aula.codigo_turma} • {formatData(alunoStats.proxima_aula.data)} às {alunoStats.proxima_aula.hora_inicio}
+                </p>
+                <div className="inline-block mt-2 bg-indigo-500/50 backdrop-blur-sm border border-indigo-400/50 rounded-md px-2.5 py-1 text-xs font-bold">
+                  📍 {alunoStats.proxima_aula.espaco}
+                </div>
+              </div>
+            </div>
+            
+            <Link
+              href={`/dashboard/turmas/${alunoStats.proxima_aula.turma_id}`}
+              className="bg-white text-indigo-700 px-5 py-2.5 rounded-lg font-bold text-sm hover:bg-indigo-50 transition-colors shadow-sm whitespace-nowrap text-center self-start md:self-center"
+            >
+              Abrir Sala de Aula
+            </Link>
+          </div>
+        </section>
+      )}
+
+      {/* ── MÓDULOS (CARDS INFERIORES) ── */}
       <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
 
         {/* ── MINHA JORNADA (carousel) ── */}
@@ -150,7 +381,7 @@ export default function DashboardPage() {
           <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center mb-5 border border-blue-100">
             <GraduationCap className="w-6 h-6 text-blue-600" />
           </div>
-          <h2 className="text-lg font-bold text-slate-800 mb-1.5">Minha Jornada</h2>
+          <h2 className="text-lg font-bold text-slate-800 mb-1.5">Andamento dos Cursos</h2>
 
           <div className="flex-1 flex flex-col">
             {loadingJornada ? (
@@ -266,108 +497,6 @@ export default function DashboardPage() {
             Ver agenda <ArrowRight className="w-4 h-4 group-hover/link:translate-x-1 transition-transform" />
           </Link>
         </div>
-
-        {/* ── ADMIN STATS ── Visão Geral da Gestão (apenas para Admin) */}
-        {isAdmin && (
-          <div className="clean-card p-6 md:p-8 flex flex-col md:col-span-2 lg:col-span-3 bg-slate-50 border-slate-200 shadow-none">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-xl bg-primary-muted flex items-center justify-center border border-primary/20">
-                  <TrendingUp className="w-6 h-6 text-primary" />
-                </div>
-                <div>
-                  <h2 className="text-xl font-extrabold text-slate-800 tracking-tight">Visão Geral da Gestão</h2>
-                  <p className="text-[12px] text-slate-500 mt-0.5">Métricas consolidadas do portal</p>
-                </div>
-              </div>
-              <span className="px-3 py-1.5 rounded-lg bg-primary text-xs font-bold text-white uppercase tracking-wider w-fit shadow-md shadow-primary/20">
-                Administrador
-              </span>
-            </div>
-
-            {/* Grid de métricas 3x2 */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-4">
-              {[
-                {
-                  label: 'Turmas Ativas',
-                  value: adminStats?.turmas_ativas,
-                  icon: <BookMarked className="w-5 h-5" />,
-                  color: 'text-emerald-600',
-                  bg: 'bg-emerald-50',
-                  border: 'border-emerald-100',
-                },
-                {
-                  label: 'Turmas Previstas',
-                  value: adminStats?.turmas_previstas,
-                  icon: <Calendar className="w-5 h-5" />,
-                  color: 'text-blue-600',
-                  bg: 'bg-blue-50',
-                  border: 'border-blue-100',
-                },
-                {
-                  label: 'Turmas Concluídas',
-                  value: adminStats?.turmas_concluidas,
-                  icon: <ClipboardCheck className="w-5 h-5" />,
-                  color: 'text-slate-600',
-                  bg: 'bg-slate-100',
-                  border: 'border-slate-200',
-                },
-                {
-                  label: 'Total Gasto',
-                  value: adminStats ? formatCurrency(adminStats.custo_total) : undefined,
-                  icon: <DollarSign className="w-5 h-5" />,
-                  color: 'text-amber-600',
-                  bg: 'bg-amber-50',
-                  border: 'border-amber-100',
-                  small: true,
-                },
-                {
-                  label: 'Matrículas',
-                  value: adminStats?.total_matriculas,
-                  icon: <BarChart3 className="w-5 h-5" />,
-                  color: 'text-indigo-600',
-                  bg: 'bg-indigo-50',
-                  border: 'border-indigo-100',
-                },
-                {
-                  label: 'Usuários',
-                  value: adminStats?.total_usuarios,
-                  icon: <Users className="w-5 h-5" />,
-                  color: 'text-violet-600',
-                  bg: 'bg-violet-50',
-                  border: 'border-violet-100',
-                },
-              ].map((m) => (
-                <div key={m.label} className={cn('p-4 rounded-2xl bg-white border flex flex-col gap-2', m.border)}>
-                  <div className={cn('w-9 h-9 rounded-lg flex items-center justify-center', m.bg, m.color)}>
-                    {m.icon}
-                  </div>
-                  <p className="text-[11px] text-slate-500 font-bold uppercase tracking-wider leading-tight">{m.label}</p>
-                  <p className={cn('font-black mt-auto', m.small ? 'text-lg' : 'text-2xl', m.value !== undefined ? m.color : 'text-slate-300')}>
-                    {m.value !== undefined
-                      ? m.value
-                      : <Loader2 className="w-5 h-5 animate-spin inline" />}
-                  </p>
-                </div>
-              ))}
-            </div>
-
-            {/* Aprovações Pendentes — alertinha */}
-            {adminStats && adminStats.aprovacoes_pendentes > 0 && (
-              <div className="mt-4 flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
-                <span className="w-6 h-6 rounded-full bg-amber-400 text-white text-[11px] font-black flex items-center justify-center shrink-0">
-                  {adminStats.aprovacoes_pendentes}
-                </span>
-                <p className="text-[13px] font-semibold text-amber-800">
-                  {adminStats.aprovacoes_pendentes === 1 ? 'Há 1 inscrição pendente' : `Há ${adminStats.aprovacoes_pendentes} inscrições pendentes`} de aprovação da chefia.
-                </p>
-                <Link href="/dashboard/equipe" className="ml-auto text-[12px] font-bold text-amber-700 hover:text-amber-600 whitespace-nowrap">
-                  Ver agora →
-                </Link>
-              </div>
-            )}
-          </div>
-        )}
 
       </section>
     </div>
