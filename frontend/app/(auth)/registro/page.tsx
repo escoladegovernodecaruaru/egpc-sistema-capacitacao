@@ -361,6 +361,7 @@ export default function RegistroPage() {
     const corpoRegistro = {
       cpf: cpfLimpo, 
       nome_completo: form.nome_completo, 
+      data_nascimento: form.data_nascimento,
       email: form.email,
       password: form.password,
       telefone: form.telefone.replace(/\D/g, ""), 

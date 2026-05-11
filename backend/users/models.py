@@ -3,6 +3,8 @@ from django.db import models
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
+from django.contrib.auth.signals import user_logged_in
+from django.dispatch import receiver
 
 class ProfileManager(BaseUserManager):
     def create_user(self, cpf, password=None, **extra_fields):
@@ -219,3 +221,26 @@ class AuditLog(models.Model):
 
     def __str__(self):
         return f"{self.method} {self.path} - {self.user.cpf if self.user else 'Anon'}"
+
+@receiver(user_logged_in)
+def log_login(sender, request, user, **kwargs):
+    # 1. Atualiza a coluna last_login do seu modelo Profile
+    # Usamos timezone.now() para garantir que pegue o horário correto configurado no settings.py
+    user.last_login = timezone.now()
+    user.save(update_fields=['last_login']) # Salva APENAS essa coluna por performance
+
+    # 2. Lógica para pegar o IP real
+    x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+    if x_forwarded_for:
+        ip = x_forwarded_for.split(',')[0]
+    else:
+        ip = request.META.get('REMOTE_ADDR')
+
+    # 3. Cria o Log de Auditoria
+    AuditLog.objects.create(
+        user=user,
+        method='LOGIN',
+        path='/api/auth/login/',
+        ip_address=ip,
+        user_agent=request.META.get('HTTP_USER_AGENT'),
+    )

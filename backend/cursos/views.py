@@ -7,7 +7,6 @@ from django.utils import timezone
 from django.shortcuts import get_object_or_404
 from .models import Curso, Turma, Inscricao, SolicitacaoReserva, ItemReserva, EventoTurma, RegistroPresenca, Modulo, Atividade, ProgressoAtividade, EspacoAlocado, Questionario, Questao, Opcao, TentativaQuestionario, RespostaAluno, ProgressoSessaoEAD
 from .serializers import CursoSerializer, TurmaSerializer, InscricaoDetailSerializer, SolicitacaoReservaSerializer, ModuloSerializer, QuestionarioSerializer
-
 from users.models import Profile
 from rest_framework.exceptions import PermissionDenied
 
@@ -1051,14 +1050,7 @@ class AlunoStatsView(APIView):
             status=Inscricao.Status.CONCLUIDO
         ).aggregate(total=Coalesce(Sum('turma__carga_horaria'), 0))['total']
 
-        # Horas extra via EAD/Atividades com recompensa (opcional)
-        horas_atividades = ProgressoAtividade.objects.filter(
-            inscricao__perfil=user,
-            concluido=True,
-            atividade__aprovado_admin=True
-        ).aggregate(total=Coalesce(Sum('atividade__carga_horaria_recompensa'), 0))['total']
-
-        total_horas_capacitacao = horas_turmas + horas_atividades
+        total_horas_capacitacao = horas_turmas
 
         # Média de Presença (Cálculo aproximado baseado em presenças)
         total_presencas = RegistroPresenca.objects.filter(inscricao__perfil=user).count()
@@ -1067,7 +1059,7 @@ class AlunoStatsView(APIView):
         if total_presencas > 0:
             percentual_presenca = ((total_presencas - faltas) / total_presencas) * 100
         else:
-            percentual_presenca = 100.0
+            percentual_presenca = 0
 
         # Encontrar a próxima aula (evento) para o Destaque
         from django.utils import timezone

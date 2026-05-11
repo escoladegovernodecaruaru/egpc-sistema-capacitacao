@@ -11,7 +11,8 @@ from datetime import timedelta
 from django.core.mail import send_mail
 from django.conf import settings
 from .models import OTPCode
-
+from django.db import transaction
+from rest_framework.throttling import AnonRateThrottle
 logger = logging.getLogger(__name__)
 
 
@@ -29,7 +30,10 @@ class PreValidateProfileView(views.APIView):
 
         errors = {}
 
-        if cpf and Profile.objects.filter(cpf=cpf).exists():
+        fantasma = Profile.objects.filter(cpf=cpf).first()
+        EMAIL_FANTASMA = f'pendente_{cpf}@escola.local'
+
+        if cpf and fantasma and fantasma.email != EMAIL_FANTASMA:
             errors['cpf'] = 'Este CPF já está cadastrado no sistema.'
 
         if email and Profile.objects.filter(email=email).exists():
@@ -41,9 +45,6 @@ class PreValidateProfileView(views.APIView):
             return Response({"status": "error", "errors": errors}, status=status.HTTP_400_BAD_REQUEST)
 
         return Response({"status": "success", "message": "Dados disponíveis para cadastro."}, status=status.HTTP_200_OK)
-
-
-from rest_framework.throttling import AnonRateThrottle
 
 class LookupEmailByCpfView(views.APIView):
     """
@@ -100,6 +101,7 @@ class RegisterProfileView(views.APIView):
         email          = data.get('email')
         password       = data.get('password')
         telefone       = data.get('telefone')
+        data_nascimento= data.get('data_nascimento')
         nome_completo  = data.get('nome_completo')
         nome_social    = data.get('nome_social', '')
         tipo_usuario   = data.get('tipo_usuario', Profile.UserType.CIDADAO)
@@ -143,6 +145,7 @@ class RegisterProfileView(views.APIView):
                     profile.email = email
                     profile.telefone = telefone or None
                     profile.nome_completo = nome_completo
+                    profile.data_nascimento = data_nascimento
                     profile.nome_social = nome_social or None
                     profile.tipo_usuario = tipo_usuario
                     profile.dados_servidor = dados_servidor
@@ -156,6 +159,7 @@ class RegisterProfileView(views.APIView):
                         email=email,
                         telefone=telefone or None,
                         nome_completo=nome_completo,
+                        data_nascimento=data_nascimento,
                         nome_social=nome_social or None,
                         tipo_usuario=tipo_usuario,
                         dados_servidor=dados_servidor,
@@ -579,7 +583,7 @@ class SendOtpView(views.APIView):
         OTPCode.objects.create(
             email=email,
             codigo=codigo,
-            expires_at=vencimento,
+            expira_em=vencimento,
         )
 
         # 4) Envia e-mail usando as configurações reais do settings.py
@@ -613,14 +617,14 @@ class ValidateOtpView(views.APIView):
                             status=status.HTTP_400_BAD_REQUEST)
 
         # Busca o OTP válido
-        otp = OTPCode.objects.filter(email=email, used=False).first()
+        otp = OTPCode.objects.filter(email=email, usado=False).first()
 
         if not otp:
             return Response({"detail": "Nenhum código pendente para este e-mail."},
                             status=status.HTTP_400_BAD_REQUEST)
 
-        if otp.expires_at < timezone.now():
-            otp.used = True
+        if otp.expira_em < timezone.now():
+            otp.usado = True
             otp.save()
             return Response({"detail": "Código expirado."},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -630,7 +634,7 @@ class ValidateOtpView(views.APIView):
                             status=status.HTTP_400_BAD_REQUEST)
 
         # Marcar como usado
-        otp.used = True
+        otp.usado = True
         otp.save()
 
         # Tenta buscar o perfil para gerar tokens (Login/Recuperação)
@@ -791,4 +795,4 @@ class SecretariaDetailView(views.APIView):
             return Response({"detail": "Secretaria não encontrada."}, status=status.HTTP_404_NOT_FOUND)
         sec.is_active = False
         sec.save(update_fields=['is_active'])
-        return Response({"detail": "Secretaria desativada."}, status=status.HTTP_200_OK)
+        return Response({"detail": "Secretaria desativada."}, status=status.HTTP_200_OK)

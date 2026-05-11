@@ -260,10 +260,6 @@ export default function SalaDeAulaPage() {
 
   if (!sala) return null;
 
-  const cargaPct = sala.progresso.meta > 0
-    ? Math.min(100, Math.round((sala.progresso.carga_adquirida / sala.progresso.meta) * 100))
-    : 0;
-
   const eventos = inscricao?.turma?.eventos ?? [];
 
   // Calcula frequência a partir das presenças
@@ -286,22 +282,7 @@ export default function SalaDeAulaPage() {
           <p className="text-[11px] font-black uppercase tracking-widest text-slate-400">{sala.turma.codigo}</p>
           <h1 className="text-xl font-extrabold text-slate-800 leading-tight">{sala.turma.titulo}</h1>
         </div>
-        {/* Barra de progresso EAD */}
-        {sala.progresso.meta > 0 && (
-          <div className="flex flex-col gap-1 min-w-[160px]">
-            <div className="flex justify-between text-[11px] font-bold text-slate-500">
-              <span>Progresso EAD</span>
-              <span>{sala.progresso.carga_adquirida}h / {sala.progresso.meta}h</span>
-            </div>
-            <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full transition-all"
-                style={{ width: `${cargaPct}%` }}
-              />
-            </div>
-            <p className="text-[10px] text-slate-400 text-right">{cargaPct}% concluído</p>
-          </div>
-        )}
+
       </div>
 
       {/* ── TABS ── */}
